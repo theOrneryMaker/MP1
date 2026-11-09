@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MP1 Settings Editor</title>
+    <link rel="stylesheet" href="theme.css">
+    <script src="theme.js"></script>
+    <script src="mp1files.js"></script>
+    <!-- The files beside this page, if they're there (define MP1_DEFAULTS / MP1_SETTINGS). Missing files are fine. -->
+    <script src="default.js"></script>
+    <script src="settings.js"></script>
+    <style>
+        /* Settings editor styles (colours come from theme.css) */
+        .file-row { display: flex; flex-wrap: wrap; gap: 2px 4px; align-items: center; margin: 0 -4px; }
+        .drive { display: inline-flex; align-items: center; gap: 8px; margin: 4px; padding: 6px 12px; border-radius: 9px;
+                 background: var(--panel-2); border: 1px solid var(--border); font-weight: 600; font-size: 0.9em; }
+        .drive .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
+        .drive.on .dot { background: var(--ok); }
+        /* Sections sidebar (same look as the help page's contents) */
+        .settings-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 24px; align-items: start; }
+        .toc { position: sticky; top: 72px; max-height: calc(100vh - 90px); overflow-y: auto;
+               background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px 10px; box-shadow: var(--shadow); }
+        .toc-title { font-size: 0.75em; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 10px 8px; }
+        .toc ul { list-style: none; }
+        .toc a { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 7px; color: var(--muted);
+                 text-decoration: none; font-size: 0.9em; font-weight: 550; }
+        .toc a:hover { color: var(--text); background: var(--panel-2); }
+        .toc a.current { color: var(--text); background: var(--orange-soft); box-shadow: inset 2px 0 0 var(--orange); }
+        .toc .count { margin-left: auto; min-width: 20px; padding: 0 6px; border-radius: 999px; text-align: center;
+                      font-size: 0.78em; font-weight: 700; background: var(--purple-soft); color: var(--purple); }
+        .toc .count:empty { display: none; }
+        .toc .sep { height: 1px; background: var(--border); margin: 8px 10px; }
+        @media (max-width: 960px) {
+            .settings-layout { grid-template-columns: minmax(0, 1fr); }
+            .toc { position: static; max-height: none; }
+            .toc ul { columns: 2; column-gap: 8px; }
+        }
+        @media (max-width: 640px) { .toc ul { columns: 1; } }
+        .section { scroll-margin-top: 70px; }
+        .section > .lead { color: var(--muted); margin: -6px 0 12px; font-size: 0.92em; }
+        .addon-off { margin: -4px 0 12px; font-style: italic; }
+
+        .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        @media (max-width: 760px) { .fields { grid-template-columns: minmax(0, 1fr); } }
+        .field { position: relative; display: flex; flex-direction: column; padding: 12px 14px; background: var(--panel-2); border: 1px solid var(--border);
+                 border-radius: 12px; min-width: 0; transition: border-color 0.15s, box-shadow 0.15s; }
+        .field:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
+        .field.changed { border-left: 3px solid var(--purple); }
+        .field.problem-error { border-color: var(--error); }
+        .field-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .field-head label { margin: 0; color: var(--text); font-size: 0.95em; }
+        .tag { font-family: var(--mono); font-size: 0.72em; padding: 1px 7px; border-radius: 6px;
+               background: var(--orange-soft); color: var(--orange); font-weight: 600; white-space: nowrap; }
+        .tag.file { background: var(--purple-soft); color: var(--purple); }
+        .field-head .btns { margin-left: auto; display: flex; gap: 4px; }
+        .field-head .btns button { margin: 0; padding: 1px 8px; font-size: 0.8em; display: none; }
+        .field.changed .btns .undo, .field.notdefault .btns .todefault { display: inline-block; }
+        .control { display: flex; align-items: center; gap: 8px; margin-top: auto; padding-top: 8px; }   /* lines up across a row */
+        .control input[type="number"] { width: 130px; }
+        .control select, .control input[type="text"] { flex: 1; min-width: 0; }
+        .unit { color: var(--muted); font-size: 0.9em; }
+        .swatch { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border-strong); flex: 0 0 26px; }
+        .field-msg { font-size: 0.85em; margin-top: 4px; }
+        .field-msg.error { color: var(--error); }
+        .field-msg.warn { color: var(--warn); }
+
+        /* On/off switch (purple when on) */
+        .switch { position: relative; display: inline-block; width: 46px; height: 26px; margin: 0; flex: 0 0 46px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; inset: 0; cursor: pointer; border-radius: 999px; background: var(--border-strong); transition: background 0.15s; }
+        .slider::before { content: ''; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; border-radius: 50%;
+                          background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 0.15s; }
+        .switch input:checked + .slider { background: var(--purple); }
+        .switch input:checked + .slider::before { transform: translateX(20px); }
+        .switch input:focus-visible + .slider { box-shadow: 0 0 0 3px var(--orange-soft); }
+        .switch-label { font-weight: 600; font-size: 0.9em; }
+
+        .issues ul, .notice ul { margin: 6px 0 0 20px; }
+        #output { font-family: var(--mono); font-size: 0.85em; height: 320px; margin-top: 8px; }
+        .savebar {
+            position: sticky; bottom: 12px; z-index: 40; margin-top: 18px;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px 10px 8px 16px;
+            background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+            border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow);
+        }
+        .savebar .status { flex: 1 1 260px; font-weight: 600; }
+        .toast { color: var(--ok); font-weight: 600; }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="keymap_configurator.html"><span class="brand-keys"><span></span><span></span><span></span><span></span></span>MP1</a>
+        <nav class="nav">
+            <a href="keymap_configurator.html">Configurator</a>
+            <a class="active" href="settings_editor.html">Settings</a>
+            <a href="help.html" target="_blank">Help</a>
+        </nav>
+        <span class="spacer"></span>
+        <div class="theme-toggle" title="Housing colour: follow the computer, or pick light / dark">
+            <button data-mode="auto" onclick="setTheme('auto')">Auto</button>
+            <button data-mode="light" onclick="setTheme('light')">Light</button>
+            <button data-mode="dark" onclick="setTheme('dark')">Dark</button>
+        </div>
+    </header>
+
+    <main class="page">
+        <h1 class="page-title">Settings Editor</h1>
+        <p class="page-sub">Edit settings.js: how the macropad behaves. The same settings as the device's menus, plus the ones only the settings file has.</p>
+
+        <div class="section">
+            <h2>Open settings</h2>
+            <div class="file-row">
+                <span class="drive" id="driveStatus" hidden><span class="dot"></span><span id="driveName">No drive folder</span></span>
+                <button id="connectBtn" onclick="connectDrive()" hidden>Connect folder…</button>
+                <button id="openDriveBtn" class="accent" onclick="openFromDrive()" hidden>Open from drive</button>
+                <button onclick="openFile()">Open file…</button>
+                <button class="danger" onclick="resetAll()">Reset all to defaults</button>
+            </div>
+            <small class="hint" id="fileHint">Opened from the CIRCUITPY drive, this page loads settings.js from beside it automatically. Or start from the defaults below, or open a settings.js / settings.json file. Settings missing from a file use their default.</small>
+            <div id="loadReport"></div>
+        </div>
+
+        <div class="settings-layout">
+        <nav class="toc" id="jump" aria-label="Sections"></nav>
+        <div class="settings-main">
+        <div id="groups"></div>
+
+        <div class="section" id="save">
+            <h2>Save settings</h2>
+            <div id="issues" class="issues"></div>
+            <small class="hint">The macropad restarts by itself when settings.js changes on its drive, and uses the new settings straight away. To copy it by hand: start the macropad while holding the encoder so the CIRCUITPY drive appears, then put settings.js in the root of the drive. The text below is the plain JSON (what Copy JSON gives you, and what Save as… writes for a .json name); settings.js is the same JSON on one extra line.</small>
+            <textarea id="output" readonly spellcheck="false"></textarea>
+        </div>
+
+        <div class="savebar">
+            <span class="status" id="saveStatus"></span>
+            <button onclick="copyOut()">Copy JSON</button>
+            <button id="saveAsBtn" onclick="saveAs()" title="settings.js (or name it .json for plain JSON)">Save as…</button>
+            <button id="saveDriveBtn" class="primary" onclick="saveToDrive()" hidden>Save to drive</button>
+        </div>
+        </div>
+        </div>
+    </main>
+
+    <script>
+    // ════════════════════════════════════════════════════════════
+    // Every setting (must match BUILTIN_DEFAULTS / CHOICES in lib/macropad/settings.py and
+    // the ranges in lib/macropad/menus.py)
+    //   type: float | int | bool | choice | text;  menu: where it is on the device
+    // ════════════════════════════════════════════════════════════
+    const GESTURE_FUNCTIONS = [
+        ['none', 'NONE'],
+        ['home_layer', 'HOME LAYER'], ['layer_keys', 'LAYER KEYS'], ['settings', 'SETTINGS'], ['timer', 'TIMER'],
+        ['timer_toggle', 'START/PAUS (timer)'], ['stopwatch', 'STOPWATCH'], ['sw_toggle', 'SW ST/PAUS (stopwatch)'],
+        ['mute', 'MUTE'], ['play_pause', 'PLAY/PAUSE'], ['panic', 'PANIC! (pause, minimize all, volume 0)'], ['jiggle', 'TOG JIGGLE'], ['secret', 'TOG SEC 1 (Secret 1)'], ['secret2', 'TOG SEC 2 (Secret 2)'], ['lock', 'LOCK KEYS'],
+        ['lights', 'TOG LIGHTS'], ['sound', 'TOG SOUND'], ['show_layer', 'SHOW LAYER'],
+    ];
+    const COLOR_NAMES = {
+        RED: '#ff0000', VERMILION: '#ff5000', ORANGE: '#ff8c00', AMBER: '#ffc800', YELLOW: '#ffff00',
+        LIME: '#b4ff00', GREEN: '#00ff00', MINT: '#00ff64', CYAN: '#00ffff', SKY: '#00b4ff', BLUE: '#0000ff',
+        INDIGO: '#6400ff', PURPLE: '#b400ff', MAGENTA: '#ff00ff', PINK: '#ff64b4', ROSE: '#ff6464',
+        WHITE: '#ffffff', WARM_WHITE: '#ffb464',
+    };
+    const COLORS = Object.keys(COLOR_NAMES).map(c => [c, c.replace('_', ' ')]);
+    const SCENES = [['off', 'Off'], ['static', 'Static'], ['breathing', 'Breathing'], ['reactive', 'Reactive (flash on key press)'],
+                    ['pulse', 'Pulse'], ['twinkle', 'Twinkle'], ['lightning', 'Lightning'], ['strobe', 'Strobe'],
+                    ['rainbow', 'Rainbow'], ['cycle', 'Colour cycle']];
+
+    const G = (key, label, menu, choices = GESTURE_FUNCTIONS) => ({key, label, menu, type: 'choice', choices});
+    const GROUPS = [
+        {id: 'gestures', title: 'Gestures', lead: 'What the encoder button does beyond a single click (Settings → GESTURES on the device).', fields: [
+            G('gesture_double', 'Double click', 'GESTURES › DOUBLE CLK'),
+            G('gesture_triple', 'Triple click', 'GESTURES › TRIPLE CLK'),
+            G('gesture_hold_cw', 'Hold + turn clockwise', 'GESTURES › HOLD CW'),
+            G('gesture_hold_ccw', 'Hold + turn counter-clockwise', 'GESTURES › HOLD CCW'),
+            G('gesture_click_hold_cw', 'Click, then hold + turn clockwise', 'GESTURES › C+HOLD CW'),
+            G('gesture_click_hold_ccw', 'Click, then hold + turn counter-clockwise', 'GESTURES › C+HOLD CCW'),
+            {key: 'multi_click_time', label: 'Click time', menu: 'GESTURES › CLICK TIME', type: 'float', min: 0.15, max: 0.6, step: 0.05, unit: 's', help: 'Longest gap between the clicks of a double or triple click.'},
+            {key: 'hold_turn_threshold', label: 'Hold + turn clicks', menu: 'GESTURES › HOLD TURN', type: 'int', min: 1, max: 10, step: 1, unit: 'clicks', help: 'Encoder clicks needed while holding the button.'},
+            {key: 'hold_gesture_min_duration', label: 'Hold + turn minimum hold', menu: 'GESTURES › HOLD MIN', type: 'float', min: 0.1, max: 1.0, step: 0.1, unit: 's'},
+        ]},
+        {id: 'config', title: 'Variables', lead: 'Button timing, timeouts, encoder speed, key repeat and the menu animation (Settings → VARIABLES).', fields: [
+            {key: 'long_press_duration', label: 'Long press', menu: 'VARIABLES › LONG PRESS', type: 'float', min: 0.5, max: 3.0, step: 0.1, unit: 's', help: 'Hold this long to open Settings.'},
+            {key: 'medium_press_duration', label: 'Medium press', menu: 'VARIABLES › MED PRESS', type: 'float', min: 0.1, max: 1.0, step: 0.05, unit: 's', help: 'Shorter than this is a click; longer closes a menu.'},
+            {key: 'secret_timeout', label: 'Secret layer timeout', menu: 'VARIABLES › SECRET T O', type: 'float', min: 5, max: 60, step: 1, unit: 's'},
+            {key: 'menu1_timeout', label: 'Layers menu timeout', menu: 'VARIABLES › LAYERS T O', type: 'float', min: 3, max: 30, step: 1, unit: 's'},
+            {key: 'menu2_timeout', label: 'Settings menu timeout', menu: 'VARIABLES › SETTINGS T O', type: 'float', min: 5, max: 60, step: 1, unit: 's'},
+            {key: 'encoder_speed_fast', label: 'Fast spin below', menu: 'VARIABLES › ENC SP FS', type: 'float', min: 0.01, max: 0.1, step: 0.01, unit: 's', help: 'Time between clicks that counts as a fast spin.'},
+            {key: 'encoder_multiplier_fast', label: 'Fast spin multiplier', menu: 'VARIABLES › ENC * FS', type: 'int', min: 1, max: 10, step: 1, unit: '×'},
+            {key: 'encoder_speed_medium', label: 'Medium spin below', menu: 'VARIABLES › ENC SP MD', type: 'float', min: 0.02, max: 0.2, step: 0.01, unit: 's'},
+            {key: 'encoder_multiplier_medium', label: 'Medium spin multiplier', menu: 'VARIABLES › ENC * MD', type: 'int', min: 1, max: 5, step: 1, unit: '×'},
+            {key: 'repeat_delay', label: 'Key repeat delay', menu: 'VARIABLES › RPT DELAY', type: 'float', min: 0.1, max: 2.0, step: 0.05, unit: 's', help: 'For keys with "Repeat while held".'},
+            {key: 'repeat_rate', label: 'Key repeat rate', menu: 'VARIABLES › RPT RATE', type: 'int', min: 1, max: 30, step: 1, unit: 'per second'},
+            {key: 'confirm_time', label: 'Hold-to-confirm time', menu: 'VARIABLES › CONFIRM T', type: 'float', min: 0.2, max: 3.0, step: 0.1, unit: 's', help: 'For keys with "Hold to confirm": how long to hold before the key fires.'},
+            {key: 'menu_roll_time', label: 'Menu roll time', menu: 'VARIABLES › ROLL TIME', type: 'float', min: 0, max: 0.4, step: 0.02, unit: 's', help: '0 turns the rolling animation off.'},
+            {key: 'menu_roll_steps', label: 'Menu roll steps', menu: 'VARIABLES › ROLL STEPS', type: 'int', min: 1, max: 8, step: 1, unit: 'frames'},
+        ]},
+        {id: 'screen', title: 'Screen', lead: 'Screen saver, Caps Lock indicator, message timing and the start-up screen (Settings → SCREEN).', fields: [
+            {key: 'screen_dim_minutes', label: 'Dim after', menu: 'SCREEN › DIM AFTER', type: 'int', min: 0, max: 120, step: 1, unit: 'minutes', zero: 'never'},
+            {key: 'screen_off_minutes', label: 'Turn off after', menu: 'SCREEN › OFF AFTER', type: 'int', min: 0, max: 240, step: 1, unit: 'minutes', zero: 'never'},
+            {key: 'screen_dim_level', label: 'Dim level', menu: 'SCREEN › DIM LEVEL', type: 'float', min: 0.05, max: 1.0, step: 0.05, help: 'Brightness while dimmed (1 = full).'},
+            {key: 'screen_off_leds', label: 'LEDs off with the screen', menu: 'SCREEN › LEDS OFF', type: 'bool', needs: 'leds'},
+            {key: 'caps_box', label: 'CAPS box in the top bar', menu: 'SCREEN › CAPS BOX', type: 'bool'},
+            {key: 'caps_flash', label: 'Flash CAPS ON / OFF', menu: 'SCREEN › CAPS FLASH', type: 'bool'},
+            {key: 'display_layer_flash_delay', label: 'Layer name flash', type: 'float', min: 0.1, max: 3, step: 0.1, unit: 's', help: 'How long messages and layer names show.'},
+            {key: 'display_jiggle_blink_rate', label: 'J / CAPS blink rate', type: 'int', min: 1, max: 10, step: 1, unit: 'per second'},
+            {key: 'jiggle_display_flash_duration', label: 'Jiggle message', type: 'float', min: 0.2, max: 5, step: 0.1, unit: 's'},
+            {key: 'boot_debug', label: 'Show debug text at start-up', type: 'bool', help: 'For testing: the start-up messages instead of the start-up image (boot.bmp).'},
+            {key: 'boot_screen_seconds', label: 'Start-up screen time', type: 'float', min: 0, max: 10, step: 0.5, unit: 's', help: 'Keeps the start-up image (or debug text) up at least this long. 0 = no wait.'},
+        ]},
+        {id: 'lights', title: 'Lights', lead: 'The optional LED strip add-on (Settings → LIGHTS appears on the device when LED count is above 0).', fields: [
+            {key: 'led_count', label: 'LED count', menu: 'LIGHTS › LED COUNT', type: 'int', min: 0, max: 60, step: 1, unit: 'LEDs', zero: 'no strip fitted'},
+            {key: 'led_scene', label: 'Scene', menu: 'LIGHTS › SCENE', type: 'choice', choices: SCENES, needs: 'leds'},
+            {key: 'led_color1', label: 'Colour 1', menu: 'LIGHTS › COLOR 1', type: 'choice', choices: COLORS, swatch: true, needs: 'leds'},
+            {key: 'led_color2', label: 'Colour 2', menu: 'LIGHTS › COLOR 2', type: 'choice', choices: COLORS, swatch: true, needs: 'leds'},
+            {key: 'led_brightness', label: 'Brightness', menu: 'LIGHTS › BRIGHTNESS', type: 'float', min: 0.05, max: 1.0, step: 0.05, needs: 'leds'},
+            {key: 'led_speed', label: 'Speed', menu: 'LIGHTS › SPEED', type: 'int', min: 1, max: 10, step: 1, help: '1 = slow, 10 = fast.', needs: 'leds'},
+        ]},
+        {id: 'sound', title: 'Sound', lead: 'The optional buzzer add-on (Settings → SOUND appears on the device when a buzzer is set).', fields: [
+            {key: 'buzzer', label: 'Buzzer', menu: 'SOUND › BUZZER', type: 'choice', choices: [['none', 'None fitted'], ['passive', 'Passive (plays tones)'], ['active', 'Active (on / off beeps)']]},
+            {key: 'buzzer_volume', label: 'Beep volume', menu: 'SOUND › BEEP VOL', type: 'float', min: 0.1, max: 1.0, step: 0.1, help: 'Passive buzzers only.', needs: 'passive'},
+            {key: 'sound_keys', label: 'Key click', menu: 'SOUND › KEY CLICK', type: 'bool', needs: 'buzzer'},
+            {key: 'sound_layers', label: 'Layer change tone', menu: 'SOUND › LAYER TONE', type: 'bool', needs: 'buzzer'},
+            {key: 'sound_startup', label: 'Start-up tone', menu: 'SOUND › START TONE', type: 'bool', needs: 'buzzer'},
+            {key: 'buzzer_active_low', label: 'Active buzzer sounds on low', type: 'bool', help: 'Only if an active buzzer is silent when it should beep.', needs: 'active'},
+        ]},
+        {id: 'encoder', title: 'Encoder hardware', lead: 'Only change these if the encoder misbehaves. A restart applies them.', fields: [
+            {key: 'encoder_reverse', label: 'Reverse direction', type: 'bool', help: 'If the encoder turns the wrong way everywhere.'},
+            {key: 'encoder_divisor', label: 'Pin steps per click', type: 'choice', choices: [[4, '4 (most encoders)'], [2, '2 (only every other click registers at 4)'], [1, '1']]},
+            {key: 'encoder_press_guard', label: 'Ignore turns after a press', type: 'float', min: 0, max: 0.3, step: 0.01, unit: 's', help: 'Pressing can rock the shaft; 0 turns this off.'},
+            {key: 'button_debounce', label: 'Button debounce', type: 'float', min: 0.005, max: 0.2, step: 0.005, unit: 's'},
+        ]},
+        {id: 'jiggle', title: 'Mouse jiggle', lead: 'Turned on and off with a gesture (TOG JIGGLE).', fields: [
+            {key: 'jiggle_min_interval', label: 'Shortest gap', type: 'int', min: 1, max: 600, step: 1, unit: 's'},
+            {key: 'jiggle_max_interval', label: 'Longest gap', type: 'int', min: 1, max: 600, step: 1, unit: 's'},
+            {key: 'jiggle_max_pixels', label: 'Distance', type: 'int', min: 1, max: 20, step: 1, unit: 'pixels'},
+        ]},
+        {id: 'advanced', title: 'Advanced', lead: 'Troubleshooting and links.', fields: [
+            {key: 'watchdog', label: 'Watchdog (restart if frozen)', type: 'bool'},
+            {key: 'debug_gestures', label: 'Print button presses to the serial console', type: 'bool'},
+            {key: 'loop_stats', label: 'Print loop timing to the serial console', type: 'bool'},
+            {key: 'main_loop_delay', label: 'Main loop pause', type: 'float', min: 0, max: 0.05, step: 0.001, unit: 's'},
+            {key: 'keymapper_url', label: 'CONFIGURATOR link', type: 'text', help: 'Opened by Settings → CONFIGURATOR.'},
+            {key: 'about_url', label: 'ABOUT link', type: 'text', help: 'Opened by Settings → ABOUT.'},
+        ]},
+    ];
+
+    // Built-in defaults (lib/macropad/settings.py BUILTIN_DEFAULTS)
+    const BUILTIN = {
+        long_press_duration: 1.5, medium_press_duration: 0.4, hold_turn_threshold: 5, hold_gesture_min_duration: 0.3,
+        button_debounce: 0.03, multi_click_time: 0.25, gesture_double: 'layer_keys', gesture_triple: 'timer',
+        gesture_hold_cw: 'jiggle', gesture_hold_ccw: 'secret', gesture_click_hold_cw: 'stopwatch', gesture_click_hold_ccw: 'none',
+        secret_timeout: 15.0, menu1_timeout: 5.0, menu2_timeout: 10.0, encoder_speed_fast: 0.03, encoder_speed_medium: 0.08,
+        encoder_multiplier_fast: 4, encoder_multiplier_medium: 2, repeat_delay: 0.5, repeat_rate: 10, confirm_time: 0.6, encoder_reverse: false,
+        encoder_press_guard: 0.06, encoder_divisor: 4, display_layer_flash_delay: 0.6, boot_debug: false, boot_screen_seconds: 1.5, screen_dim_minutes: 5, screen_off_minutes: 20,
+        screen_dim_level: 0.1, screen_off_leds: true, caps_box: true, caps_flash: true, menu_roll_time: 0.15, menu_roll_steps: 4,
+        display_jiggle_blink_rate: 2, jiggle_display_flash_duration: 1.0, jiggle_min_interval: 25, jiggle_max_interval: 40,
+        jiggle_max_pixels: 1, led_count: 0, led_scene: 'reactive', led_color1: 'INDIGO', led_color2: 'VERMILION',
+        led_brightness: 0.25, led_speed: 4, buzzer: 'none', buzzer_active_low: false, buzzer_volume: 1.0, sound_startup: true,
+        sound_keys: false, sound_layers: false, main_loop_delay: 0.001, loop_stats: false, watchdog: true, debug_gestures: false,
+        about_url: 'https://mp1-help.theornerymaker.com', keymapper_url: 'https://mp1-configurator.theornerymaker.com',
+    };
+    const FIELDS = Object.fromEntries(GROUPS.flatMap(g => g.fields).map(f => [f.key, f]));
+    // The macropad's defaults: built in, overridden by default.js on the drive (as on the device)
+    const DEFAULTS = {...BUILTIN};
+    const defaultsFile = typeof MP1_DEFAULTS === 'object' && MP1_DEFAULTS ? MP1_DEFAULTS : null;
+    if (defaultsFile) {
+        for (const [key, v] of Object.entries(defaultsFile)) if (key in BUILTIN && valueOk(key, v)) DEFAULTS[key] = v;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // State, reading and writing
+    // ════════════════════════════════════════════════════════════
+    let values = {...DEFAULTS};
+    let loaded = {...DEFAULTS};     // what was opened (or the defaults): changes are shown against this
+    let dirty = false;              // any value differs from what was opened / last saved
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+    const same = (a, b) => typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-9 : a === b;
+    const isChanged = key => !same(values[key], loaded[key]);
+    const notDefault = key => !same(values[key], DEFAULTS[key]);
+    function markSaved() { loaded = {...values}; changed(); }
+
+    // Same rules as settings.py _type_ok: wrong values are reported and the default is used
+    function valueOk(key, v) {
+        const f = FIELDS[key], d = BUILTIN[key];
+        if (f.type === 'choice') return f.choices.some(([c]) => c === v);
+        if (typeof d === 'boolean') return typeof v === 'boolean';
+        if (typeof d === 'number') return typeof v === 'number' && isFinite(v) && v >= 0;
+        return typeof v === 'string';
+    }
+
+    // Load file contents over the defaults (missing settings = default). Returns notes.
+    function loadSettings(data) {
+        if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('settings.json should be { ... }');
+        const notes = [];
+        const next = {...DEFAULTS};
+        for (let [key, v] of Object.entries(data)) {
+            if (key === 'led_scene' && v === 'layer') {
+                notes.push('led_scene: PER LAYER is no longer a scene. Layers with their own lights now always use them, so the scene is set to STATIC (what PER LAYER showed on other layers; the macropad does the same).');
+                v = 'static';
+            }
+            if (key.startsWith('gesture_') && ['last_layer', 'next_layer', 'prev_layer'].includes(v)) {
+                notes.push(`${key}: ${v.replace('_', ' ').toUpperCase()} is no longer a gesture option, so it's set to NONE (the macropad does the same).`);
+                v = 'none';
+            }
+            if (!(key in DEFAULTS)) notes.push(`Unknown setting "${key}" will be left out (the macropad would report it at start-up).`);
+            else if (!valueOk(key, v)) notes.push(`${key}: ${JSON.stringify(v)} isn't valid, so it was reset to the default (${JSON.stringify(DEFAULTS[key])}).`);
+            else next[key] = v;
+        }
+        const missing = Object.keys(DEFAULTS).filter(k => !(k in data));
+        if (missing.length) notes.push(`${missing.length} setting(s) weren't in the file and use their default: ${missing.join(', ')}.`);
+        values = next;
+        loaded = {...next};
+        return notes;
+    }
+
+    // Python-style number text so the file matches what the macropad itself writes (15.0, not 15)
+    function fmt(key, v) {
+        if (typeof v === 'number' && FIELDS[key].type === 'float' && Number.isInteger(v)) return v.toFixed(1);
+        return JSON.stringify(v);
+    }
+    // One setting per line, sorted: the same layout as settings.py to_text()
+    // settings.js: the same JSON as one script line, so the pages can load it (same as the device writes)
+    const SETTINGS_NOTE = 'MP1 macropad settings. Edit with settings_editor.html, or on the device (Settings menu).';
+    function settingsJs() { return `// ${SETTINGS_NOTE}\nvar MP1_SETTINGS = ${settingsText().trimEnd()};\n`; }
+    // settings.js / settings.json contents: the JSON between the first { and the last }
+    function fileData(text) {
+        const start = text.indexOf('{'), end = text.lastIndexOf('}');
+        if (start < 0 || end < start) throw new Error('no { ... } found');
+        return JSON.parse(text.slice(start, end + 1));
+    }
+    function settingsText() {
+        return '{\n' + Object.keys(values).sort().map(k => `  ${JSON.stringify(k)}: ${fmt(k, values[k])}`).join(',\n') + '\n}\n';
+    }
+
+    function validate() {
+        const issues = [];
+        const add = (key, level, msg) => issues.push({key, level, msg});
+        for (const [key, f] of Object.entries(FIELDS)) {
+            const v = values[key];
+            if (!valueOk(key, v)) { add(key, 'error', 'not a valid value'); continue; }
+            if ((f.type === 'float' || f.type === 'int') && (v < f.min || v > f.max))
+                add(key, 'warn', `outside the usual range ${f.min}-${f.max}`);
+        }
+        if (values.jiggle_min_interval > values.jiggle_max_interval)
+            add('jiggle_min_interval', 'warn', 'shortest gap is above the longest gap (the macropad swaps them)');
+        if (values.screen_dim_minutes && values.screen_off_minutes && values.screen_dim_minutes >= values.screen_off_minutes)
+            add('screen_dim_minutes', 'warn', 'dims at or after the screen turns off, so it never dims');
+        return issues;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Rendering
+    // ════════════════════════════════════════════════════════════
+    // Add-on settings show only when the add-on is fitted (like the device's LIGHTS / SOUND
+    // menus). Hidden settings keep their values and are still saved.
+    const NEEDS = {
+        leds: () => values.led_count > 0,
+        buzzer: () => values.buzzer !== 'none',
+        passive: () => values.buzzer === 'passive',
+        active: () => values.buzzer === 'active',
+    };
+    const ADDON_OFF = {
+        lights: [() => !(values.led_count > 0), 'No LED strip fitted: set LED count above 0 to see the strip settings.'],
+        sound: [() => values.buzzer === 'none', 'No buzzer fitted: pick a buzzer type to see the sound settings.'],
+    };
+    function shown(f, problem) {
+        return !f.needs || NEEDS[f.needs]() || !!(problem && problem.level === 'error');   // errors always visible
+    }
+
+    function control(f) {
+        const v = values[f.key], id = `f-${f.key}`;
+        if (f.type === 'bool') {
+            return `<label class="switch"><input type="checkbox" id="${id}" ${v ? 'checked' : ''} onchange="setValue('${f.key}', this.checked)"><span class="slider"></span></label>
+                    <span class="switch-label">${v ? 'On' : 'Off'}</span>`;
+        }
+        if (f.type === 'choice') {
+            const known = f.choices.some(([c]) => c === v);
+            const opts = (known ? '' : `<option selected>${esc(v)} (unknown)</option>`) + f.choices.map(([c, label]) =>
+                `<option value="${esc(c)}" ${c === v ? 'selected' : ''}>${esc(label)}</option>`).join('');
+            const sw = f.swatch ? `<span class="swatch" style="background:${COLOR_NAMES[v] || 'transparent'}"></span>` : '';
+            return `${sw}<select id="${id}" onchange="setChoice('${f.key}', this.value)">${opts}</select>`;
+        }
+        if (f.type === 'text') return `<input type="text" id="${id}" value="${esc(v)}" oninput="setValue('${f.key}', this.value, false)">`;
+        const zero = f.zero && v === 0 ? ` (${f.zero})` : '';
+        return `<input type="number" id="${id}" value="${esc(v)}" min="${f.min}" max="${f.max}" step="${f.step}" oninput="setNumber('${f.key}', this.value)">
+                <span class="unit" id="u-${f.key}">${esc(f.unit || '')}${zero}</span>`;
+    }
+
+    function fieldHtml(f, problems) {
+        const changed = isChanged(f.key), nondef = notDefault(f.key);
+        const p = problems[f.key];
+        const def = f.type === 'choice' ? (f.choices.find(([c]) => c === DEFAULTS[f.key]) || [0, DEFAULTS[f.key]])[1]
+                  : f.type === 'bool' ? (DEFAULTS[f.key] ? 'on' : 'off') : fmt(f.key, DEFAULTS[f.key]).replace(/"/g, '');
+        return `
+            <div class="field ${changed ? 'changed' : ''} ${nondef ? 'notdefault' : ''} ${p ? 'problem-' + p.level : ''}" id="field-${f.key}" ${shown(f, p) ? '' : 'hidden'}>
+                <div class="field-head">
+                    <label for="f-${f.key}">${esc(f.label)}</label>
+                    ${f.menu ? `<span class="tag" title="Where it is on the macropad">${esc(f.menu)}</span>` : '<span class="tag file" title="Only in the settings file (no menu item on the macropad)">settings.js</span>'}
+                    <span class="btns">
+                        <button class="undo" onclick="undoValue('${f.key}')" title="Back to the value in the file you opened">↺ undo</button>
+                        <button class="todefault" onclick="resetValue('${f.key}')" title="Set to the default">default</button>
+                    </span>
+                </div>
+                <div class="control">${control(f)}</div>
+                <small>${f.help ? esc(f.help) + ' ' : ''}Default: ${esc(def)}${f.unit && f.type !== 'choice' && f.type !== 'bool' ? ' ' + esc(f.unit) : ''}.</small>
+                <div class="field-msg ${p ? p.level : ''}" id="msg-${f.key}">${p ? esc(p.msg) : ''}</div>
+            </div>`;
+    }
+
+    function render() {
+        const problems = Object.fromEntries(validate().map(i => [i.key, i]));
+        document.getElementById('jump').innerHTML = '<div class="toc-title">Sections</div><ul>' +
+            GROUPS.map(g => `<li><a href="#${g.id}" id="nav-${g.id}">${esc(g.title)}<span class="count" id="count-${g.id}" title="Changed since opened"></span></a></li>`).join('') +
+            '</ul><div class="sep"></div><ul><li><a href="#save" id="nav-save">Save</a></li></ul>';
+        document.getElementById('groups').innerHTML = GROUPS.map(g => `
+            <div class="section" id="${g.id}">
+                <h2>${esc(g.title)}</h2>
+                <p class="lead">${esc(g.lead)}</p>
+                ${ADDON_OFF[g.id] ? `<p class="hint addon-off" id="off-${g.id}" ${ADDON_OFF[g.id][0]() ? '' : 'hidden'}>${esc(ADDON_OFF[g.id][1])}</p>` : ''}
+                <div class="fields">${g.fields.map(f => fieldHtml(f, problems)).join('')}</div>
+            </div>`).join('');
+        changed();
+        watchSections();
+    }
+
+    // Highlight the section being viewed in the sidebar
+    let sectionWatcher = null;
+    function watchSections() {
+        if (typeof IntersectionObserver === 'undefined') return;
+        if (sectionWatcher) sectionWatcher.disconnect();
+        sectionWatcher = new IntersectionObserver(entries => {
+            entries.forEach(e => {
+                if (!e.isIntersecting) return;
+                document.querySelectorAll('.toc a.current').forEach(a => a.classList.remove('current'));
+                const link = document.getElementById('nav-' + e.target.id);
+                if (link) link.classList.add('current');
+            });
+        }, {rootMargin: '-80px 0px -65% 0px'});
+        if (!document.querySelector('.toc a.current')) {
+            const first = document.getElementById('nav-' + GROUPS[0].id);
+            if (first) first.classList.add('current');
+        }
+        [...GROUPS.map(g => g.id), 'save'].forEach(id => {
+            const sec = document.getElementById(id);
+            if (sec) sectionWatcher.observe(sec);
+        });
+    }
+
+    // Light refresh while typing (keeps focus in the box being edited)
+    function changed() {
+        dirty = Object.keys(DEFAULTS).some(isChanged);
+        const issues = validate();
+        const byKey = Object.fromEntries(issues.map(i => [i.key, i]));
+        for (const key of Object.keys(FIELDS)) {
+            const box = document.getElementById(`field-${key}`), msg = document.getElementById(`msg-${key}`);
+            if (!box || !box.classList) continue;
+            box.classList.toggle('changed', isChanged(key));
+            box.classList.toggle('notdefault', notDefault(key));
+            box.classList.toggle('problem-error', !!(byKey[key] && byKey[key].level === 'error'));
+            msg.className = 'field-msg ' + (byKey[key] ? byKey[key].level : '');
+            box.hidden = !shown(FIELDS[key], byKey[key]);
+            msg.textContent = byKey[key] ? byKey[key].msg : '';
+        }
+        for (const [id, [off]] of Object.entries(ADDON_OFF)) {
+            const note = document.getElementById(`off-${id}`);
+            if (note) note.hidden = !off();
+        }
+        document.getElementById('output').value = settingsText();
+        const errors = issues.filter(i => i.level === 'error').length;
+        const changedCount = Object.keys(DEFAULTS).filter(isChanged).length;
+        const offDefault = Object.keys(DEFAULTS).filter(notDefault).length;
+        for (const g of GROUPS) {
+            const n = g.fields.filter(f => isChanged(f.key)).length;
+            const badge = document.getElementById(`count-${g.id}`);
+            if (badge) badge.textContent = n ? String(n) : '';
+        }
+        document.getElementById('issues').innerHTML = issues.length
+            ? `<strong>${errors} error(s), ${issues.length - errors} warning(s)</strong><ul>${issues.map(i =>
+                `<li class="issue-${i.level}"><a href="#field-${i.key}">${esc(FIELDS[i.key].label)}</a>: ${esc(i.msg)}</li>`).join('')}</ul>`
+            : '<span class="issues-ok">✓ No problems found</span>';
+        document.getElementById('saveStatus').innerHTML = (issues.length
+            ? `<a href="#save" class="${errors ? 'issue-error' : 'issue-warn'}">${errors} error(s), ${issues.length - errors} warning(s)</a>`
+            : '<span class="issues-ok">✓ No problems</span>') +
+            ` <span class="hint" style="display:inline;margin-left:8px">${changedCount ? changedCount + ' unsaved change(s)' : 'No unsaved changes'} · ${offDefault} differ from the defaults</span>`;
+    }
+
+    // ─── Edits ───
+    function setValue(key, v, redraw = true) { values[key] = v; if (redraw) render(); else changed(); }
+    function setChoice(key, raw) {
+        const f = FIELDS[key];
+        const hit = f.choices.find(([c]) => String(c) === raw);
+        values[key] = hit ? hit[0] : raw;
+        render();
+    }
+    function setNumber(key, raw) {
+        const f = FIELDS[key];
+        let v = f.type === 'int' ? parseInt(raw, 10) : parseFloat(raw);
+        if (!isFinite(v)) v = NaN;
+        else if (f.type === 'float') v = Math.round(v * 10000) / 10000;
+        values[key] = v;
+        const unit = document.getElementById(`u-${key}`);
+        if (unit && f.zero) unit.textContent = (f.unit || '') + (v === 0 ? ` (${f.zero})` : '');
+        changed();
+    }
+    function resetValue(key) { values[key] = DEFAULTS[key]; render(); }
+    function undoValue(key) { values[key] = loaded[key]; render(); }
+    function resetAll() {
+        if (!confirm('Set every setting back to its default? (Nothing is saved until you save.)')) return;
+        values = {...DEFAULTS};
+        render();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Files
+    // ════════════════════════════════════════════════════════════
+    function report(title, notes, error = false) {
+        document.getElementById('loadReport').innerHTML = `<div class="notice ${error ? 'issue-error' : ''}"><strong>${esc(title)}</strong>` +
+            (notes && notes.length ? `<ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '') + '</div>';
+    }
+    function loadText(text, from) {
+        try {
+            const notes = loadSettings(fileData(text));
+            render();
+            report(`✓ Opened ${from}.`, notes);
+        } catch (e) {
+            report(`Couldn't open ${from}: ${e.message}`, [], true);
+        }
+    }
+    function okToReplace() { return !dirty || confirm('Replace your unsaved changes?'); }
+    function toast(text) {
+        document.getElementById('saveStatus').innerHTML = `<span class="toast">✓ ${esc(text)}</span>`;
+        setTimeout(changed, 3000);
+    }
+    function failed(e) {
+        if (typeof MP1Files !== 'undefined' && MP1Files.cancelled(e)) return;
+        alert(e.message || String(e));
+    }
+    function errorsOk() {
+        const errors = validate().filter(i => i.level === 'error');
+        return !errors.length || confirm(`There are ${errors.length} error(s). The macropad will use the default for those settings.\n\nSave anyway?`);
+    }
+
+    async function openFile() {
+        if (!okToReplace()) return;
+        const file = await MP1Files.openFile();
+        if (file) loadText(file.text, file.name);
+    }
+    async function openFromDrive() {
+        if (!okToReplace()) return;
+        try {
+            const file = await MP1Files.readFirst(['settings.js', 'settings.json']);
+            await updateDrive();
+            loadText(file.text, `${file.name} from "${await MP1Files.folderName()}"`);
+        } catch (e) { failed(e); }
+    }
+    async function saveToDrive() {
+        if (!errorsOk()) return;
+        try {
+            const where = await MP1Files.writeTo('settings.js', settingsJs());
+            markSaved();
+            await updateDrive();
+            toast(`Saved settings.js to "${where}" (old copy kept as settings.js.bak)`);
+        } catch (e) { failed(e); }
+    }
+    async function saveAs() {
+        if (!errorsOk()) return;
+        try {
+            const done = await MP1Files.saveAsEither('settings.js', {js: settingsJs(), json: settingsText()});
+            markSaved();
+            toast(done);
+        } catch (e) { failed(e); }
+    }
+    async function connectDrive() {
+        try { await MP1Files.connect(); await updateDrive(); } catch (e) { failed(e); }
+    }
+    function copyOut() {
+        navigator.clipboard.writeText(settingsText())
+            .then(() => toast('Copied to the clipboard'))
+            .catch(() => alert('Copy failed. Select the text in the Save section and copy it manually.'));
+    }
+    async function updateDrive() {
+        if (typeof MP1Files === 'undefined' || !MP1Files.hasFolders) return;
+        for (const id of ['driveStatus', 'connectBtn', 'openDriveBtn', 'saveDriveBtn']) document.getElementById(id).hidden = false;
+        const name = await MP1Files.folderName();
+        document.getElementById('driveStatus').classList.toggle('on', !!name);
+        document.getElementById('driveName').textContent = name ? `Drive folder: ${name}` : 'No drive folder yet';
+        document.getElementById('connectBtn').textContent = name ? 'Change folder…' : 'Connect folder…';
+        document.getElementById('fileHint').textContent = name
+            ? 'Open from drive / Save to drive use settings.js in that folder (or settings.json if there is no settings.js). Open file… and Save as… let you pick any location (name the file .json for plain JSON).'
+            : 'Connect folder… once and pick the CIRCUITPY drive; then Save to drive writes settings.js there directly. Open file… and Save as… let you pick any location (name the file .json for plain JSON).';
+    }
+
+    if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+    }
+    if (typeof MP1_SETTINGS === 'object' && MP1_SETTINGS) {
+        try {
+            const notes = loadSettings(MP1_SETTINGS);
+            render();
+            report('✓ Opened settings.js from this folder.' + (defaultsFile ? ' Defaults come from default.js.' : ''), notes);
+        } catch (e) { render(); report(`Couldn't use settings.js from this folder: ${e.message}`, [], true); }
+    } else {
+        render();
+        if (defaultsFile) report('Showing the defaults (from default.js; there is no settings.js beside this page).', []);
+    }
+    updateDrive();
+    </script>
+</body>
+</html>

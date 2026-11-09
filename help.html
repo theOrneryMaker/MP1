@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>MP1 Macropad User Guide</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="theme.css">
+    <script src="theme.js"></script>
+    <style>
+        /* Help page styles (colours come from theme.css) */
+        .help-layout { max-width: 1240px; margin: 0 auto; padding: 28px 16px 80px;
+                       display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 32px; align-items: start; }
+        .toc { position: sticky; top: 72px; max-height: calc(100vh - 90px); overflow-y: auto;
+               background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px 10px; box-shadow: var(--shadow); }
+        .toc-title { font-size: 0.75em; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 0 10px 8px; }
+        .toc ul { list-style: none; }
+        .toc a { display: block; padding: 5px 10px; border-radius: 7px; color: var(--muted); text-decoration: none; font-size: 0.9em; font-weight: 550; }
+        .toc a:hover { color: var(--text); background: var(--panel-2); }
+        .toc a.current { color: var(--text); background: var(--orange-soft); box-shadow: inset 2px 0 0 var(--orange); }
+
+        .doc { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 34px 40px; box-shadow: var(--shadow); min-width: 0; }
+        .doc h2, .doc h3, .doc h4 { scroll-margin-top: 80px; }
+        .doc h2 { display: flex; align-items: center; gap: 12px; font-size: 1.45em; font-weight: 800; letter-spacing: -0.01em;
+                  margin: 44px 0 12px; padding-top: 28px; border-top: 1px solid var(--border); }
+        .doc h2::before { content: ''; width: 12px; height: 12px; border-radius: 3px; background: var(--orange); flex: 0 0 12px; }
+        .doc .page-title + .page-sub + h2, .doc h2:first-of-type { margin-top: 10px; }
+        .doc h3 { font-size: 1.1em; font-weight: 750; margin: 26px 0 8px; }
+        .doc h4 { font-size: 1em; font-weight: 700; margin: 22px 0 6px; color: var(--purple); }
+        .doc p { margin: 10px 0; }
+        .doc ul, .doc ol { margin: 8px 0; padding-left: 26px; }
+        .doc li { margin: 5px 0; }
+        .doc li::marker { color: var(--muted); }
+        .doc strong { font-weight: 700; }
+        .doc pre { margin: 12px 0; }
+        .doc table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 14px 0;
+                     border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 0.95em; }
+        .doc th, .doc td { padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+        .doc tr:last-child td { border-bottom: 0; }
+        .doc th { background: var(--panel-2); font-size: 0.85em; letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); }
+        .doc tbody tr:nth-child(even) td { background: var(--panel-2); }
+        .doc .note { margin: 14px 0; }
+        .doc footer { margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.92em; }
+
+        @media (max-width: 960px) {
+            .help-layout { grid-template-columns: minmax(0, 1fr); }
+            .toc { position: static; max-height: none; }
+            .toc ul { columns: 2; column-gap: 8px; }
+        }
+        @media (max-width: 640px) { .doc { padding: 22px 18px; } .toc ul { columns: 1; } }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="keymap_configurator.html"><span class="brand-keys"><span></span><span></span><span></span><span></span></span>MP1</a>
+        <nav class="nav">
+            <a href="keymap_configurator.html">Configurator</a>
+            <a href="settings_editor.html">Settings</a>
+            <a class="active" href="help.html">Help</a>
+        </nav>
+        <span class="spacer"></span>
+        <div class="theme-toggle" title="Housing colour: follow the computer, or pick light / dark">
+            <button data-mode="auto" onclick="setTheme('auto')">Auto</button>
+            <button data-mode="light" onclick="setTheme('light')">Light</button>
+            <button data-mode="dark" onclick="setTheme('dark')">Dark</button>
+        </div>
+    </header>
+
+    <div class="help-layout">
+        <nav class="toc" aria-label="Contents">
+            <div class="toc-title">Contents</div>
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#terms">Terms Used</a></li>
+                <li><a href="#basic-controls">Basic Controls</a></li>
+                <li><a href="#layers">Layers</a></li>
+                <li><a href="#settings-menu">Settings Menu</a></li>
+                <li><a href="#timer">Timer</a></li>
+                <li><a href="#stopwatch">Stopwatch</a></li>
+                <li><a href="#screen-saver">Screen Saver</a></li>
+                <li><a href="#lock-keys">Locking the Keys</a></li>
+                <li><a href="#hold-to-confirm">Hold-to-Confirm Keys</a></li>
+                <li><a href="#caps-lock">Caps Lock Indicator</a></li>
+                <li><a href="#addons">Add-ons: LED Lights &amp; Buzzer</a></li>
+                <li><a href="#mouse-jiggle">Mouse Jiggle</a></li>
+                <li><a href="#secret-layer">Secret Layers</a></li>
+                <li><a href="#configuration-menu">Variables Menu</a></li>
+                <li><a href="#gestures">Encoder Gestures</a></li>
+                <li><a href="#keymap-configurator">Keymap Configurator (Web Tool)</a></li>
+                <li><a href="#sharing-layers">Sharing Layers</a></li>
+                <li><a href="#settings-editor">Settings Editor (Web Tool)</a></li>
+                <li><a href="#keymap-format">keymap.js Format</a></li>
+                <li><a href="#startup-errors">Start-up Error Check</a></li>
+                <li><a href="#macro-recorder">Recording Macros</a></li>
+                <li><a href="#tips-tricks">Tips & Tricks</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+                <li><a href="#file-structure">File Structure Reference</a></li>
+                <li><a href="#quick-reference">Quick Reference Card</a></li>
+            </ul>
+        </nav>
+
+    <main class="doc">
+        <h1 class="page-title">MP1 Macropad Guide</h1>
+        <p class="page-sub">Everything the macropad, its menus and the web tools can do.</p>
+
+        <!-- Overview -->
+        <h2 id="overview">Overview</h2>
+        <p>The MP1 Macropad is a programmable input device with 8 keys, a rotary encoder, and an OLED display. It can type text, run keyboard shortcuts, control media, open applications, and more.</p>
+
+        <!-- Basic Controls -->
+        <h2 id="terms">Terms Used</h2>
+        <p>The macropad, this guide and the web pages use the same words for the same things:</p>
+        <table>
+            <tbody>
+                <tr><td><strong>Encoder</strong></td><td>The rotary control. <strong>Turn</strong> it; <strong>click</strong> its button (a short press), <strong>long press</strong> it, or <strong>hold + turn</strong> it.</td></tr>
+                <tr><td><strong>Home layer</strong></td><td>The layer active at power-up (exactly one). The HOME LAYER gesture jumps back to it. In keymap.js it's the layer with <code>"default": true</code>.</td></tr>
+                <tr><td><strong>Secret 1 / Secret 2</strong></td><td>Hidden layers, opened with the TOG SEC 1 / TOG SEC 2 gestures.</td></tr>
+                <tr><td><strong>Macro</strong></td><td>A key action made of several steps (typing, keys, combos, waits). In keymap.js it's a <code>"sequence"</code>.</td></tr>
+                <tr><td><strong>Layers menu</strong></td><td>The list of layers a click opens. <strong>Layer keys</strong> shows them on the keys instead.</td></tr>
+                <tr><td><strong>Settings menu</strong></td><td>What a long press opens: TIMER, STOPWATCH, VARIABLES, GESTURES, SCREEN, LIGHTS, SOUND, CONFIGURATOR, ABOUT.</td></tr>
+                <tr><td><strong>VARIABLES</strong></td><td>The Settings submenu with timings and speeds (press times, timeouts, encoder speed, key repeat, hold-to-confirm, menu rolling).</td></tr>
+                <tr><td><strong>Lights / LED strip</strong></td><td>LIGHTS is the menu; the LED strip is the optional hardware it controls.</td></tr>
+                <tr><td><strong>Sound / buzzer</strong></td><td>SOUND is the menu; the buzzer is the optional hardware it controls.</td></tr>
+                <tr><td><strong>Export / Import</strong></td><td>Saving a single key or layer to a file to share, and adding one from a file. <strong>Save</strong> / <strong>Open</strong> are for the whole keymap or settings file.</td></tr>
+            </tbody>
+        </table>
+
+        <h2 id="basic-controls">Basic Controls</h2>
+
+        <h3>The Encoder</h3>
+        <p><strong>Turn:</strong> Performs the clockwise or counter-clockwise action set for the current layer (volume, scrolling, zoom, tabs, arrow keys, etc.)</p>
+
+        <p><strong>Press:</strong></p>
+        <ul>
+            <li><strong>Click</strong> (&lt; 0.4s): Opens the Layers menu (after a brief pause to check for a double or triple click)</li>
+            <li><strong>Double click:</strong> Layer keys: press a key to jump to that layer (default; change in <a href="#gestures">GESTURES</a>)</li>
+            <li><strong>Triple click:</strong> Opens the timer (default; change in GESTURES)</li>
+            <li><strong>Medium press</strong> (0.4-1.5s): Exits current menu (outside a menu, briefly shows the current layer name)</li>
+            <li><strong>Long press</strong> (&gt; 1.5s): Opens Settings menu</li>
+        </ul>
+
+        <p><strong>Turn while holding:</strong></p>
+        <ul>
+            <li><strong>Hold + turn clockwise:</strong> Toggle mouse jiggle on/off (default; change in GESTURES)</li>
+            <li><strong>Hold + turn counter-clockwise:</strong> Toggle secret layer (default; change in GESTURES)</li>
+            <li><strong>Click, then hold + turn clockwise:</strong> Stopwatch (default; change in GESTURES)</li>
+            <li><strong>Click, then hold + turn counter-clockwise:</strong> Nothing by default (pick a function in GESTURES)</li>
+        </ul>
+
+        <h3>The 8 Keys</h3>
+        <p>Each key can be programmed to:</p>
+        <ul>
+            <li>Type text or passwords</li>
+            <li>Execute keyboard shortcuts</li>
+            <li>Open URLs</li>
+            <li>Launch applications</li>
+            <li>Control media playback</li>
+            <li>Scroll, move the mouse, or click mouse buttons</li>
+            <li>Run complex macros</li>
+        </ul>
+        <p>The OLED display shows icons or labels for what each key does.</p>
+
+        <!-- Layers -->
+        <h2 id="layers">Layers</h2>
+        <p>Layers are different "pages" of key assignments. Think of them like function keys on a keyboard - the same physical keys do different things on each layer.</p>
+
+        <h3>Switching Layers</h3>
+        <ol>
+            <li><strong>Click</strong> the encoder</li>
+            <li>Turn the encoder to select a layer</li>
+            <li><strong>Click</strong> again to switch to that layer</li>
+        </ol>
+        <p>The Layers menu closes by itself after 5 seconds without input (adjustable with <strong>LAYERS T O</strong> in VARIABLES).</p>
+        <p>All scrolling menus (Layers, Settings, VARIABLES and the other settings menus) roll like a slot-machine reel: as you turn, the items slide up or down one place, growing as they reach the middle and shrinking as they leave it, with the next items sliding in from the edge.</p>
+        <p>Dial in the feel with two settings in VARIABLES:</p>
+        <ul>
+            <li><strong>ROLL TIME</strong> - How long one roll takes (0-0.4s, default 0.15s). Lower is snappier, higher is more visible. 0 turns the animation off.</li>
+            <li><strong>ROLL STEPS</strong> - How many frames are drawn during each roll (1-8, default 4). More is smoother. 1 gives a single half-way frame.</li>
+        </ul>
+        <p>The screen can draw roughly 30-40 frames a second. If ROLL STEPS asks for more than that within ROLL TIME, some frames are skipped, but the roll still takes the same time. As a guide, ROLL TIME ÷ ROLL STEPS should be about 0.03s or more (for example 0.15s with 4-5 steps, or 0.24s with 8). Spinning the encoder quickly restarts the roll on each click, so fast scrolling stays fast.</p>
+
+        <h3 id="layer-keys">Layer Keys (quick jump)</h3>
+        <p>A faster way to switch layers: set any gesture (for example TRIPLE CLK) to <strong>LAYER KEYS</strong> in <a href="#gestures">GESTURES</a>. The gesture shows each layer's name on a key; press that key to jump straight to the layer.</p>
+        <ul>
+            <li>Names are cut to 4 letters. The current layer is marked with <strong>&gt;</strong> (for example <code>&gt;MED</code>).</li>
+            <li>Layers are in the same order as the Layers menu. Secret layers are never shown.</li>
+            <li>With more than 8 layers, the top line shows the page (<code>LAYERS 1/2</code>). Turn the encoder to change page.</li>
+            <li>Keys with no layer do nothing. Press the encoder to leave without switching. It also closes after the LAYERS T O time.</li>
+        </ul>
+
+        <p><strong>Example layers:</strong></p>
+        <ul>
+            <li><strong>LOGINS:</strong> Quick access to credentials and password manager</li>
+            <li><strong>DATA:</strong> Text snippets, formatting shortcuts</li>
+            <li><strong>MEDIA:</strong> Media controls and volume</li>
+            <li><strong>MACROS:</strong> Complex macros</li>
+        </ul>
+
+        <!-- Settings Menu -->
+        <h2 id="settings-menu">Settings Menu</h2>
+        <p>Access advanced features and tools.</p>
+
+        <h3>Opening Settings</h3>
+        <p><strong>Long press</strong> the encoder (hold for 1.5+ seconds)</p>
+
+        <h3>Settings Options</h3>
+        <ul>
+            <li><strong>TIMER</strong> - Opens the countdown timer</li>
+            <li><strong>STOPWATCH</strong> - Opens the stopwatch (see <a href="#stopwatch">Stopwatch</a>)</li>
+            <li><strong>VARIABLES</strong> - Adjust timing and behavior settings</li>
+            <li><strong>SCREEN</strong> - Screen saver timing and the Caps Lock indicator (see <a href="#screen-saver">Screen Saver</a> and <a href="#caps-lock">Caps Lock Indicator</a>)</li>
+            <li><strong>GESTURES</strong> - Choose what double click, triple click, hold + turn and click-then-hold + turn do, and the click timing (see <a href="#gestures">Encoder Gestures</a>)</li>
+            <li><strong>LIGHTS</strong> - LED strip: default scene, colours, brightness, animation speed and LED count. Only listed when an LED strip is switched on in settings.js (see <a href="#addons">Add-ons</a>).</li>
+            <li><strong>SOUND</strong> - Buzzer: key click, layer tone, start-up tone, volume and buzzer type. Only listed when a buzzer is switched on in settings.js (see <a href="#addons">Add-ons</a>).</li>
+            <li><strong>CONFIGURATOR</strong> - Opens the web-based keymap configurator</li>
+            <li><strong>ABOUT</strong> - Opens the help documentation</li>
+            <li><strong>EXIT</strong> - Close the settings menu</li>
+        </ul>
+
+        <h3>Navigation</h3>
+        <ul>
+            <li><strong>Turn encoder:</strong> Scroll through options</li>
+            <li><strong>Click:</strong> Select the highlighted option</li>
+            <li><strong>Medium press:</strong> Exit settings menu</li>
+        </ul>
+        <p>The Settings menu closes by itself after 10 seconds without input (adjustable with <strong>SETTINGS T O</strong> in VARIABLES).</p>
+
+        <!-- Timer -->
+        <h2 id="timer">Timer</h2>
+        <p>A productivity timer built into your macropad.</p>
+
+        <h3>Opening the Timer</h3>
+        <ol>
+            <li>Long press encoder → Settings menu</li>
+            <li>Turn to <strong>TIMER</strong> and click to open</li>
+        </ol>
+
+        <h3>Timer Controls</h3>
+        <p>The keys become timer controls:</p>
+        <table>
+            <tbody>
+                <tr><td><strong>1HR</strong></td><td><strong>30M</strong></td><td><strong>15M</strong></td><td><strong>5M</strong></td></tr>
+                <tr><td><strong>CLR</strong></td><td><strong>PLAY</strong></td><td><strong>PAUS</strong></td><td>---</td></tr>
+            </tbody>
+        </table>
+        <ul>
+            <li><strong>1HR / 30M / 15M / 5M:</strong> Set the timer to that preset (stops any running countdown)</li>
+            <li><strong>CLR:</strong> Clear the timer to 0:00</li>
+            <li><strong>PLAY:</strong> Start the countdown, or resume it after a pause</li>
+            <li><strong>PAUS:</strong> Pause the countdown at its current time (PLAY resumes it)</li>
+            <li><strong>---:</strong> Not assigned</li>
+        </ul>
+
+        <p><strong>Encoder actions in timer:</strong></p>
+        <ul>
+            <li><strong>Turn:</strong> Add or subtract 30 seconds (only while the timer is stopped)</li>
+            <li><strong>Press:</strong> Exit the timer screen (the countdown keeps running)</li>
+        </ul>
+        <p>The top-left corner shows the timer state: <strong>+/-</strong> (stopped, adjustable), <strong>RUN</strong> or <strong>PAUS</strong>. The countdown appears in the top bar on every layer while a time is set. The timer screen closes by itself after 30 seconds without input.</p>
+
+        <h3>When Timer Completes</h3>
+        <p>The display flashes "DONE" on a blank screen, closing any open menu. With the add-ons fitted, the buzzer beeps until you dismiss the alert and the LED strip flashes red.</p>
+        <ul>
+            <li><strong>Single tap encoder:</strong> Dismiss alert and return to last layer (timer clears to 00:00)</li>
+            <li><strong>Double tap encoder:</strong> Dismiss alert and return to timer menu (the taps must be within CLICK TIME, set in GESTURES)</li>
+        </ul>
+        <div class="note">
+            <strong>Note:</strong> During the alert, all keys and encoder rotation are blocked until you press the encoder.
+        </div>
+
+        <!-- Stopwatch -->
+        <h2 id="stopwatch">Stopwatch</h2>
+        <p>Counts up from zero. Open it from Settings → <strong>STOPWATCH</strong>, or assign <strong>STOPWATCH</strong> to a gesture in <a href="#gestures">GESTURES</a>.</p>
+        <p>The time shows large in the middle (<code>12:34.5</code>, or <code>1:02:03</code> after an hour). The bottom row of keys are the controls, in the same places as on the timer screen:</p>
+        <table>
+            <tbody>
+                <tr><td>-</td><td>-</td><td>-</td><td>-</td></tr>
+                <tr><td><strong>RST</strong></td><td><strong>PLAY</strong></td><td><strong>PAUS</strong></td><td>-</td></tr>
+            </tbody>
+        </table>
+        <ul>
+            <li><strong>RST:</strong> Stop and reset to 00:00.0</li>
+            <li><strong>PLAY:</strong> Start, or resume after a pause</li>
+            <li><strong>PAUS:</strong> Pause at the current time</li>
+            <li><strong>Encoder press:</strong> Leave the stopwatch screen. It keeps counting in the background.</li>
+        </ul>
+        <ul>
+            <li>While the stopwatch has time on it, the top bar on every layer shows it (for example <code>SW 1:15</code>, or <code>SW 1:02h</code> after an hour). If a timer countdown is set, the countdown shows instead.</li>
+            <li>The <strong>SW ST/PAUS</strong> gesture starts or pauses the stopwatch without opening its screen.</li>
+            <li>The screen stays open while the stopwatch is running. When it's stopped or paused, it closes after 30 seconds without input.</li>
+            <li>It stays accurate for runs of any length, until the macropad is unplugged or restarted.</li>
+        </ul>
+
+        <!-- Screen Saver -->
+        <h2 id="screen-saver">Screen Saver</h2>
+        <p>OLED screens slowly burn in if they show the same thing for hours. When the macropad sits idle, the screen first dims, then turns off. Any key, turn or press brings it back.</p>
+
+        <h3>Settings</h3>
+        <p>Long press encoder → Settings → <strong>SCREEN</strong>:</p>
+        <ul>
+            <li><strong>DIM AFTER</strong> - Minutes idle before the screen dims (0-120, default 5; turn down to 0 for NEVER)</li>
+            <li><strong>OFF AFTER</strong> - Minutes idle before the screen turns off (0-240, default 20; 0 = NEVER)</li>
+            <li><strong>DIM LEVEL</strong> - Brightness while dimmed (0.05-1, default 0.1). How much difference this makes varies between screens.</li>
+            <li><strong>LEDS OFF</strong> - The LED strip goes dark when the screen turns off (default ON; only matters with the LED add-on)</li>
+            <li><strong>CAPS BOX</strong> / <strong>CAPS FLASH</strong> - Caps Lock indicator (see <a href="#caps-lock">Caps Lock Indicator</a>)</li>
+            <li><strong>RESET DFLT</strong> / <strong>EXIT</strong></li>
+        </ul>
+
+        <h3>Waking It Up</h3>
+        <ul>
+            <li><strong>While dimmed:</strong> keys, the encoder and the button work as normal and brighten the screen.</li>
+            <li><strong>While off:</strong> the first key, turn or press only wakes the screen and does nothing else, because you can't see which layer you're on. Press again to use it.</li>
+            <li>Mouse jiggle and the timer counting down don't count as activity, so the screen still sleeps while they run.</li>
+            <li>The screen never sleeps while the timer alert is showing (the alert also wakes it) or while the stopwatch screen is open and running.</li>
+        </ul>
+
+        <h3 id="startup-screen">Start-up Screen</h3>
+        <p>While the macropad starts, the screen shows the start-up image, <code>boot.bmp</code> from the CIRCUITPY drive, for at least 1.5 seconds.</p>
+        <ul>
+            <li><strong>Your own image:</strong> replace <code>boot.bmp</code> with any black-and-white BMP up to 128 × 64 pixels (it's centred). In Windows Paint: resize the canvas to 128 × 64, draw, then <em>Save as → BMP picture</em> and choose <strong>Monochrome Bitmap</strong>. If the file is missing or can't be read, a plain <strong>MP1</strong> title shows instead.</li>
+            <li><strong>For testing:</strong> set <code>"boot_debug": true</code> (Settings Editor → Screen → <strong>Show debug text at start-up</strong>) to see the start-up messages instead of the image: how many layers loaded, the LED strip and buzzer, free memory and the watchdog.</li>
+            <li><strong>How long:</strong> <code>"boot_screen_seconds"</code> (Settings Editor → <strong>Start-up screen time</strong>, default 1.5; 0 = no wait). Start-up errors still show on their own screen afterwards, either way.</li>
+        </ul>
+
+        <!-- Lock keys -->
+        <h2 id="lock-keys">Locking the Keys</h2>
+        <p>Set any gesture to <strong>LOCK KEYS</strong> in <a href="#gestures">GESTURES</a> (or the Settings Editor). Using it locks the macropad, for cleaning, carrying it, or when something is resting on it:</p>
+        <ul>
+            <li>The screen shows a full-screen <strong>LOCKED</strong> page that flashes between white-on-black and black-on-white (in time with the jiggle J / CAPS box), with a reminder of how to unlock, e.g. <em>HOLD+TURN CW: UNLOCK</em>.</li>
+            <li>Keys, encoder turns, clicks and all other gestures do nothing. Anything held down when you lock is released.</li>
+            <li><strong>Unlock</strong> with the same gesture.</li>
+            <li>Still working while locked: the timer alarm (after dismissing it you're back on the lock page), mouse jiggle and the screen saver (the flashing page dims and turns off like any other).</li>
+            <li>If no gesture is set to LOCK KEYS any more (changed while locked), a <strong>long press</strong> unlocks, so it can't get stuck. Restarting the macropad always unlocks.</li>
+        </ul>
+
+        <!-- Hold to confirm -->
+        <h2 id="hold-to-confirm">Hold-to-Confirm Keys</h2>
+        <p>For keys you don't want to hit by accident (shut down, delete, send, a password): tick <strong>Hold to confirm</strong> on the key in the <a href="#keymap-configurator">Keymap Configurator</a> (or add <code>"confirm": true</code> to the key in <a href="#keymap-format">keymap.js</a>).</p>
+        <ul>
+            <li>Press and hold the key: the screen shows <strong>HOLD</strong>, the key's icon and a bar that fills up.</li>
+            <li>When the bar is full, the key's action runs <strong>once</strong>, as a quick press, and the layer comes back. Keep holding or let go, it doesn't run again.</li>
+            <li><strong>Let go early</strong> (or press the encoder) to cancel: nothing is sent.</li>
+            <li>How long to hold: <strong>CONFIRM T</strong> in the <a href="#configuration-menu">VARIABLES menu</a> (0.2-3.0s, default 0.6s), the same for every confirm key.</li>
+            <li>While the bar fills, other keys and the encoder do nothing. A timer alarm takes over and cancels it.</li>
+            <li>A confirm key can't also <strong>repeat while held</strong> (the configurator hides that tick box; the start-up check reports both being on and uses confirm).</li>
+        </ul>
+
+        <!-- Caps Lock -->
+        <h2 id="caps-lock">Caps Lock Indicator</h2>
+        <p>The macropad shows when Caps Lock is on, whichever keyboard turned it on. Computers send the Caps Lock state to every connected keyboard, so this works on any computer with nothing to install.</p>
+        <ul>
+            <li><strong>CAPS box:</strong> While Caps Lock is on, a white box with black <strong>CAPS</strong> text shows at the right of the top bar. It blinks to white text on black and back, at the same rate and in time with the jiggle <strong>J</strong> (<code>display_jiggle_blink_rate</code> in settings.js). It's shown on every layer and on the timer, stopwatch and Layer Keys screens, and hidden while a menu is open.</li>
+            <li><strong>Flash:</strong> When Caps Lock changes, <strong>CAPS ON</strong> or <strong>CAPS OFF</strong> flashes briefly on the layer screen; the CAPS box appears once the pop-up has gone. It doesn't flash while a menu or the timer/stopwatch screen is open, or while the screen saver has the screen off (it won't wake the screen).</li>
+            <li>Switch each one on or off in Settings → SCREEN: <strong>CAPS BOX</strong> and <strong>CAPS FLASH</strong> (both ON by default).</li>
+            <li>If Caps Lock is already on when the macropad starts, the box shows without a flash.</li>
+        </ul>
+
+        <!-- Add-ons -->
+        <h2 id="addons">Add-ons: LED Lights &amp; Buzzer</h2>
+        <p>Both are optional. A macropad without them works exactly the same, and their menus (LIGHTS and SOUND) stay hidden. Switch each one on in settings.js (edit it from your computer, then restart the macropad); its menu then appears in Settings.</p>
+
+        <h3>LED Strip</h3>
+        <ul>
+            <li><strong>Wiring:</strong> NeoPixel (WS2812) data on <strong>GP19</strong></li>
+            <li><strong>Enable:</strong> in settings.js set <code>"led_count"</code> to the number of LEDs (e.g. <code>4</code>). <code>0</code> means no strip and hides the LIGHTS menu.</li>
+            <li><strong>Adjust:</strong> long press → Settings → <strong>LIGHTS</strong>:
+                <ul>
+                    <li><strong>SCENE</strong> - the scene on every layer that has no lights of its own (table below)</li>
+                    <li><strong>COLOR 1</strong> / <strong>COLOR 2</strong> - colours used by the scene</li>
+                    <li><strong>BRIGHTNESS</strong> - 0.05 to 1.0</li>
+                    <li><strong>SPEED</strong> - animation speed, 1 (slow) to 10 (fast); 5 is the middle. At 5 a pulse takes 3 seconds; 1 is three times slower, 10 four times faster.</li>
+                    <li><strong>LED COUNT</strong> - number of LEDs on the strip; applies as soon as you save (setting 0 switches the strip off and hides LIGHTS)</li>
+                </ul>
+                Changes preview live while you turn and save when you press; if the menu times out mid-edit, the change is undone.</li>
+        </ul>
+        <table>
+            <thead><tr><th>Scene</th><th>Effect</th></tr></thead>
+            <tbody>
+                <tr><td>STATIC</td><td>Solid colour 1</td></tr>
+                <tr><td>BREATHING</td><td>Colour 1 fades in and out, then colour 2</td></tr>
+                <tr><td>REACTIVE</td><td>Colour 1, flashing colour 2 on each key press</td></tr>
+                <tr><td>PULSE</td><td>Colour 1 rising and falling</td></tr>
+                <tr><td>TWINKLE</td><td>Each LED drifts on its own between dim and bright colour 1</td></tr>
+                <tr><td>LIGHTNING</td><td>Flickering strikes of colour 1 every few seconds (about 2-8 s apart at SPEED 4)</td></tr>
+                <tr><td>STROBE</td><td>Fast flashes of colour 1</td></tr>
+                <tr><td>RAINBOW</td><td>Moving rainbow across the LEDs</td></tr>
+                <tr><td>CYCLE</td><td>Whole strip blends through the spectrum</td></tr>
+                <tr><td>OFF</td><td>LEDs off</td></tr>
+            </tbody>
+        </table>
+        <p>COLOR 1 / COLOR 2 choose from 18 palette colours; BRIGHTNESS is 0.05-1.0; SPEED is 1 (slow) to 10 (fast). When the timer finishes, the strip flashes red until you dismiss it.</p>
+        <p>Fades stay smooth even at low brightness: the macropad applies BRIGHTNESS itself and smooths the steps between the strip's levels by alternating them from frame to frame, so slow pulses and breathing glide instead of stepping. The very dimmest levels are left unsmoothed so they don't shimmer.</p>
+
+        <h3>Buzzer</h3>
+        <ul>
+            <li><strong>Wiring:</strong> <strong>GP17</strong></li>
+            <li><strong>Wiring detail:</strong> buzzer <strong>+</strong> to GP17, <strong>–</strong> to GND</li>
+            <li><strong>Enable:</strong> in settings.js set <code>"buzzer"</code> to <code>"passive"</code> (plays tones; most small 2-pin piezo buzzers) or <code>"active"</code> (fixed pitch, sounds on its own when powered). <code>"none"</code> hides the SOUND menu. For an active buzzer that sounds when the pin is low, also set <code>"buzzer_active_low": true</code>.</li>
+            <li><strong>Adjust:</strong> long press → Settings → <strong>SOUND</strong>:
+                <ul>
+                    <li><strong>KEY CLICK</strong> - short high click on every key press (ON/OFF)</li>
+                    <li><strong>LAYER TONE</strong> - two rising notes when the layer changes (ON/OFF)</li>
+                    <li><strong>START TONE</strong> - rising chirp at power-up (ON/OFF)</li>
+                    <li><strong>BEEP VOL</strong> - volume 0.1-1.0, with a test beep as you turn (passive buzzers only)</li>
+                    <li><strong>BUZZER</strong> - PASSIVE, ACTIVE or NONE; applies as soon as you save (NONE switches the buzzer off and hides SOUND)</li>
+                </ul>
+            </li>
+            <li><strong>Sounds:</strong> start-up chirp, timer alarm (repeats until dismissed), key click and layer-change tone. On an active buzzer the click and layer tone differ by rhythm instead of pitch.</li>
+            <li>Sounds play in the background, so the macropad never freezes while beeping.</li>
+        </ul>
+
+        <!-- Mouse Jiggle -->
+        <h2 id="mouse-jiggle">Mouse Jiggle</h2>
+        <p>Prevents your computer from going to sleep by moving the mouse cursor periodically.</p>
+
+        <h3>Activating Jiggle</h3>
+        <p><strong>Hold encoder + turn clockwise</strong> (the default; any gesture can be set to TOG JIGGLE in <a href="#gestures">GESTURES</a>)</p>
+        <p>The display briefly shows "JIGGLE" and a "J" indicator appears in the top-right corner.</p>
+
+        <h3>Deactivating Jiggle</h3>
+        <p><strong>Hold encoder + turn clockwise</strong> again</p>
+        <p>The "J" indicator disappears.</p>
+
+        <h3>How It Works</h3>
+        <ul>
+            <li>Mouse moves 1 pixel in a random direction every 25-40 seconds</li>
+            <li>Movement is subtle and won't interfere with work</li>
+            <li>Immediately returns cursor to original position</li>
+        </ul>
+
+        <!-- Secret Layer -->
+        <h2 id="secret-layer">Secret Layers</h2>
+        <p>Up to two optional hidden layers, <strong>Secret 1</strong> and <strong>Secret 2</strong>, that time out after 15 seconds of inactivity. Perfect for sensitive functions. They don't appear in the Layers menu or Layer Keys, and neither can be the home layer. In the Keymap Configurator, set a layer's <strong>Secret layer</strong> choice to Secret 1 or Secret 2 (one layer each).</p>
+
+        <h3>Opening a Secret Layer</h3>
+        <ul>
+            <li><strong>Secret 1:</strong> the <strong>TOG SEC 1</strong> gesture (by default <strong>hold encoder + turn counter-clockwise</strong>)</li>
+            <li><strong>Secret 2:</strong> the <strong>TOG SEC 2</strong> gesture. It has no gesture by default: pick one in <a href="#gestures">GESTURES</a>, for example C+HOLD CCW.</li>
+            <li>If the keymap has only one of the two, both gestures open that one. With no secret layers, they do nothing.</li>
+            <li>From one secret layer you can go straight to the other with its gesture.</li>
+        </ul>
+
+        <h3>Leaving a Secret Layer</h3>
+        <ul>
+            <li>Wait 15 seconds without pressing a key or turning the encoder (automatic timeout, adjustable with <strong>SECRET T O</strong> in VARIABLES; the same for both)</li>
+            <li>Use the same gesture again</li>
+        </ul>
+        <p>Either way, you go back to the regular layer you were on before (also after hopping between the two secret layers).</p>
+
+        <!-- Variables Menu -->
+        <h2 id="configuration-menu">Variables Menu</h2>
+        <p>Adjust timing, speeds, and timeouts to customize your macropad's behavior.</p>
+
+        <p class="note">You can also change every setting from a computer with the <a href="#settings-editor">Settings Editor</a>.</p>
+
+        <h3>Opening Variables</h3>
+        <ol>
+            <li>Long press encoder → Settings menu</li>
+            <li>Turn to <strong>VARIABLES</strong> and click to open</li>
+        </ol>
+
+        <h3>Navigating Variables</h3>
+        <ul>
+            <li><strong>Turn encoder:</strong> Scroll through settings</li>
+            <li><strong>Press:</strong> Edit the selected setting (shows its name top-left and value large)</li>
+            <li><strong>Turn (while editing):</strong> Adjust value up/down</li>
+            <li><strong>Press (while editing):</strong> Save and return to the list</li>
+        </ul>
+        <p>Saved changes take effect immediately, no restart needed. The menu closes by itself after 30 seconds without input; a value you were still editing is discarded.</p>
+        <div class="note">
+            <strong>Note:</strong> Settings can only be saved when the macropad started normally (USB drive hidden). If you started it in programming mode by holding the encoder at power-up (or boot.py isn't on the drive), changes apply until the next restart but aren't saved, and the screen briefly shows <strong>NOT SAVED</strong>.
+        </div>
+
+        <h3>Available Settings</h3>
+        <ul>
+            <li><strong>LONG PRESS</strong> - Duration for long press detection (0.5-3.0s)</li>
+            <li><strong>MED PRESS</strong> - Duration for medium press detection (0.1-1.0s)</li>
+            <li><strong>SECRET T O</strong> - Secret layer timeout, for both secret layers (5-60s)</li>
+            <li><strong>LAYERS T O</strong> - Layers menu timeout (3-30s)</li>
+            <li><strong>SETTINGS T O</strong> - Settings menu timeout (5-60s)</li>
+            <li><strong>ENC SP FS</strong> - Encoder fast speed threshold: clicks closer together than this count as fast (0.01-0.1s)</li>
+            <li><strong>ENC * FS</strong> - Fast rotation multiplier (1-10)</li>
+            <li><strong>ENC SP MD</strong> - Encoder medium speed threshold (0.02-0.2s)</li>
+            <li><strong>ENC * MD</strong> - Medium rotation multiplier (1-5)</li>
+            <li><strong>RPT DELAY</strong> - How long to hold a key with "Repeat while held" before it starts repeating (0.1-2.0s, default 0.5s)</li>
+            <li><strong>RPT RATE</strong> - How many times a second it then repeats (1-30, default 10)</li>
+            <li><strong>CONFIRM T</strong> - How long to hold a <a href="#hold-to-confirm">hold-to-confirm</a> key before it fires (0.2-3.0s, default 0.6s)</li>
+            <li><strong>ROLL TIME</strong> - How long a menu takes to roll one item (0-0.4s, default 0.15s; 0 = off)</li>
+            <li><strong>ROLL STEPS</strong> - Frames drawn during each roll (1-8, default 4; more = smoother, see <a href="#layers">Layers</a>)</li>
+        </ul>
+        <p>Buzzer and LED settings have their own SOUND and LIGHTS menus (see <a href="#addons">Add-ons</a>).</p>
+        <ul>
+            <li><strong>RESET DFLT</strong> - Restore all settings to defaults (from default.js)</li>
+            <li><strong>EXIT</strong> - Close the Variables menu</li>
+        </ul>
+        <p>A few settings are only changed by editing settings.js directly (in programming mode): mouse jiggle timing (<code>jiggle_min_interval</code>, <code>jiggle_max_interval</code>, <code>jiggle_max_pixels</code>), display timings, the CONFIGURATOR/ABOUT links, <code>loop_stats</code> (prints main-loop timing to the serial console; see Troubleshooting), <code>button_debounce</code> (how long the encoder button must be steady before a press counts, default 0.03 s), <code>encoder_reverse</code> (set to true if the encoder is wired backwards), and the add-on hardware settings (<code>led_count</code>, <code>buzzer</code>, <code>buzzer_active_low</code>; see <a href="#addons">Add-ons</a>).</p>
+
+        <!-- Encoder Gestures -->
+        <h2 id="gestures">Encoder Gestures</h2>
+        <p>Double click, triple click, hold + turn and click-then-hold + turn (each direction) can each run a device function. They work the same on every layer.</p>
+
+        <h3>Changing Gestures</h3>
+        <p>Long press encoder → Settings → <strong>GESTURES</strong>. Turn to pick an item, press to edit, turn to change, press to save.</p>
+        <ul>
+            <li><strong>DOUBLE CLK</strong> - Double click (default LAYER KEYS)</li>
+            <li><strong>TRIPLE CLK</strong> - Triple click (default TIMER)</li>
+            <li><strong>HOLD CW</strong> - Hold + turn clockwise (default TOG JIGGLE)</li>
+            <li><strong>HOLD CCW</strong> - Hold + turn counter-clockwise (default TOG SEC 1)</li>
+            <li><strong>C+HOLD CW</strong> - Click once, then press and hold while turning clockwise (default STOPWATCH)</li>
+            <li><strong>C+HOLD CCW</strong> - Click once, then press and hold while turning counter-clockwise (default NONE)</li>
+            <li><strong>CLICK TIME</strong> - Longest gap between clicks of a double/triple click (0.15-0.6s, default 0.25s)</li>
+            <li><strong>HOLD TURN</strong> - Encoder clicks needed for a hold + turn (1-10)</li>
+            <li><strong>HOLD MIN</strong> - Minimum hold duration for a hold + turn (0.1-1.0s)</li>
+            <li><strong>RESET DFLT</strong> / <strong>EXIT</strong></li>
+        </ul>
+
+        <h3>Functions</h3>
+        <table>
+            <thead><tr><th>Function</th><th>What it does</th></tr></thead>
+            <tbody>
+                <tr><td>NONE</td><td>Nothing</td></tr>
+                <tr><td>HOME LAYER</td><td>Go to the home layer (the one active at power-up)</td></tr>
+                <tr><td>LAYER KEYS</td><td>Show the layers on the keys; press a key to jump to that layer (see <a href="#layer-keys">Layer Keys</a>). The scrolling Layers menu is always a single click.</td></tr>
+                <tr><td>SETTINGS</td><td>Open the Settings menu</td></tr>
+                <tr><td>TIMER</td><td>Open the timer screen</td></tr>
+                <tr><td>START/PAUS</td><td>Start or pause the timer without opening it</td></tr>
+                <tr><td>STOPWATCH</td><td>Open the <a href="#stopwatch">Stopwatch</a> screen</td></tr>
+                <tr><td>SW ST/PAUS</td><td>Start or pause the stopwatch without opening it</td></tr>
+                <tr><td>MUTE</td><td>Mute / unmute the computer (media key)</td></tr>
+                <tr><td>PLAY/PAUSE</td><td>Play / pause music or video (media key)</td></tr>
+                <tr><td>PANIC!</td><td>In one go: <strong>pauses</strong> music and video (the dedicated Pause key, so it never starts anything), <strong>minimizes every window</strong> (Win+M, so pressing it again doesn't bring them back), and turns the <strong>volume all the way down</strong> (about 0.3 s; it doesn't use Mute, which would unmute if the sound was already muted). Safe to press more than once. Afterwards, turn the volume back up yourself. Windows only, like Open URL and Run app.</td></tr>
+                <tr><td>TOG JIGGLE</td><td>Mouse jiggle on/off</td></tr>
+                <tr><td>TOG SEC 1</td><td>Secret 1 on/off (opens Secret 2 if there's no Secret 1)</td></tr>
+                <tr><td>LOCK KEYS</td><td>Locks the keys and encoder (see <a href="#lock-keys">Locking the Keys</a>); the same gesture unlocks</td></tr>
+                <tr><td>TOG SEC 2</td><td>Secret 2 on/off (opens Secret 1 if there's no Secret 2)</td></tr>
+                <tr><td>TOG LIGHTS</td><td>LED strip off/on until the next restart</td></tr>
+                <tr><td>TOG SOUND</td><td>Key click and layer tone off/on until the next restart (the timer alarm still sounds)</td></tr>
+                <tr><td>SHOW LAYER</td><td>Flash the current layer name</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Click Timing</h3>
+        <ul>
+            <li>After a click, the macropad waits up to CLICK TIME for another click before acting, so a single click opens the Layers menu a moment later than a press used to.</li>
+            <li>A triple click acts as soon as the third click is released.</li>
+            <li>A click-then-hold + turn counts only if the hold starts within CLICK TIME of the click; otherwise it's a plain hold + turn.</li>
+            <li>If TRIPLE CLK is NONE, a double click acts as soon as the second click is released. If DOUBLE CLK, TRIPLE CLK and both C+HOLD gestures are NONE, a single click opens the Layers menu instantly.</li>
+            <li>Inside menus, a click still selects instantly.</li>
+        </ul>
+
+        <!-- Keymap Configurator -->
+        <h2 id="keymap-configurator">Keymap Configurator (Web Tool)</h2>
+        <p>A web-based tool for customizing your key assignments without coding.</p>
+
+        <h3>Opening the Configurator</h3>
+        <ol>
+            <li>Visit: <a href="https://mp1-configurator.theornerymaker.com" target="_blank">https://mp1-configurator.theornerymaker.com</a></li>
+            <li>Or from Settings → <strong>CONFIGURATOR</strong></li>
+        </ol>
+        <p>The configurator, the settings editor, the macro recorder and this guide share a top bar with links between them. <strong>Auto / Light / Dark</strong> at the top right picks the colour scheme: Auto follows your computer's setting, and your choice is remembered in that browser. The pages work offline (no web fonts), so they look the same when opened from the CIRCUITPY drive.</p>
+
+        <h3>Using the Configurator</h3>
+        <ol>
+            <li><strong>Load your keymap.js</strong> (optional). Version 1 files from older firmware are converted automatically, with a list of anything that changed.</li>
+            <li><strong>Pick a layer tab.</strong> The <strong>◀ ▶</strong> arrows either side of the selected tab move it left or right. Use <strong>+ Add layer</strong>, <strong>Duplicate layer</strong> (adds a copy after the current one) and <strong>Delete layer</strong> to arrange layers. The order is the order in the Layers menu.</li>
+            <li><strong>Or start from a template:</strong> <strong>+ Add layer from template…</strong> adds a ready-made layer to edit: Media (volume keys repeat while held), Editing (cut, copy, paste, undo…), Navigation (arrows, home/end, page up/down), Browser (back, reload, tabs…), Windows (snap left/right, maximise, task view, screenshot, lock; encoder = virtual desktops), Presenter (start, start here, black/white screen, slides, first, end; encoder = slides) or Numpad operators.</li>
+            <li><strong>Set the layer details:</strong> name (up to 10 characters), <strong>Home layer</strong> (active at power-up, exactly one) and <strong>Secret layer</strong>: Not secret, Secret 1 or Secret 2 (optional; one layer each, never the home layer; see <a href="#secret-layer">Secret Layers</a>).</li>
+            <li><strong>Check the screen preview.</strong> The monitor button next to the layer buttons opens it in a small panel that stays up while you edit (it remembers whether it was open). It shows the layer as it will look on the macropad's screen: icons cut to 4 characters, the encoder icon top left, and <strong>ERR</strong> on any key the macropad would reject. Click a key in the preview to jump to its settings.</li>
+            <li><strong>Rearrange keys by dragging:</strong> drag a key in the preview, or by its <strong>⠿ Key N</strong> heading, onto another key to swap the two (icon, action, repeat and confirm settings move together).</li>
+            <li><strong>Set up each key</strong> (Key 1-4 is the top row, 5-8 the bottom row): an icon of up to 4 characters, plus one action:
+                <ul>
+                    <li><strong>Type text</strong> - types the text (a new line presses Enter)</li>
+                    <li><strong>Key</strong> - a single key, held for as long as you hold the macropad key</li>
+                    <li><strong>Key combo</strong> - up to 4 keys together, e.g. CONTROL + C</li>
+                    <li><strong>Media key</strong> - play/pause, tracks, volume, mute, brightness, etc.</li>
+                    <li><strong>Open URL</strong> - opens a website through the Windows Run box</li>
+                    <li><strong>Run app</strong> - runs a program through the Windows Run box (Win+R)</li>
+                    <li><strong>Mouse scroll</strong> - scrolls the wheel (positive = up)</li>
+                    <li><strong>Mouse move</strong> - moves the pointer by X/Y pixels</li>
+                    <li><strong>Mouse click</strong> - left, right or middle button, held while the key is held</li>
+                    <li><strong>Macro</strong> - a list of steps (any action above plus delays), each repeatable with ×N</li>
+                </ul>
+                Any key with an action gets a <strong>Hold to confirm</strong> tick box: it then only fires after being held (see <a href="#hold-to-confirm">Hold-to-Confirm Keys</a>). Media keys, scrolling, mouse moves, text and macros also get a <strong>Repeat while held</strong> tick box (see RPT DELAY / RPT RATE in the <a href="#configuration-menu">VARIABLES menu</a>); a key can't have both.
+            </li>
+            <li><strong>Set up the encoder</strong> (see below)</li>
+            <li><strong>Check the problems list</strong> in the Save section. It shows the same errors the macropad would report at start-up.</li>
+            <li><strong>Undo / Redo:</strong> the <strong>↶ Undo</strong> and <strong>↷ Redo</strong> buttons in the save bar (or <strong>Ctrl+Z</strong> and <strong>Ctrl+Y</strong> / <strong>Ctrl+Shift+Z</strong>) step back and forward through your edits, including added, deleted, moved and swapped layers and keys, and jump to the layer that changed. Typing in one box counts as one step. While the cursor is in a text box, Ctrl+Z undoes the typing in that box instead; click outside it to undo whole edits. Opening a keymap starts a fresh history.</li>
+            <li><strong>Print a cheat sheet:</strong> <strong>🖨 Cheat sheet</strong> in the save bar at the bottom prints a summary of every layer: the 8 keys laid out like the pad with their icons and what they do, the encoder for each layer, and what the encoder button's clicks and gestures do. Choose <em>Save as PDF</em> in the print window for a file. Secret layers, the gestures that open them and long typed text are left out, so it's safe to leave on your desk. The gestures come from settings.js when the page is opened from the drive (otherwise the defaults).</li>
+            <li><strong>See what you've changed:</strong> keys changed since the keymap was opened (or last saved) get a purple edge, layer tabs with changes (or new layers) get a dot, and the save bar sums it up, including removed or reordered layers. Putting something back the way it was clears its mark. The page warns you before closing with unsaved changes.</li>
+            <li><strong>Save keymap.js</strong> with the buttons at the bottom of the page (they stay in view while you scroll):
+                <ul>
+                    <li><strong>Save to drive</strong> writes it straight to the connected CIRCUITPY drive (see below)</li>
+                    <li>Or <strong>Save as…</strong>, then copy the file to the root of the drive yourself (not a sub-folder), in programming mode (hold the encoder button while plugging in)</li>
+                </ul>
+            </li>
+        </ol>
+
+        <h3 id="opening-saving">Opening and Saving Files</h3>
+        <p>The configurator and the settings editor open and save their file the same way:</p>
+        <ul>
+            <li><strong>Connect folder…</strong> (Chrome and Edge): pick the CIRCUITPY drive once. The browser remembers it, and may ask once per visit to allow editing.</li>
+            <li><strong>Opened from the drive, the pages load your files by themselves:</strong> the configurator shows <code>keymap.js</code> and the settings editor shows <code>settings.js</code> (with the defaults from <code>default.js</code>) from the same folder, in every browser, with nothing to click. Without those files they start from their built-in defaults.</li>
+            <li><strong>Open from drive</strong> / <strong>Save to drive</strong>: read or write <code>keymap.js</code> (or <code>settings.js</code>) in the connected folder directly; Open from drive falls back to <code>keymap.json</code> / <code>settings.json</code> if there's no .js file. Before saving, the old file is kept as <code>keymap.js.bak</code> / <code>settings.js.bak</code>.</li>
+            <li><strong>Open file…</strong> / <strong>Save as…</strong>: pick any file or location yourself. Open file… accepts .js and .json; Save as… writes .js, or plain JSON if you give the file a .json name. These work in every browser; where the browser has no save dialog (Firefox, Safari), Save as… downloads the file instead. The drive buttons only appear in browsers that support them.</li>
+            <li>The <strong>copy</strong> button on the JSON box in the Save section copies the plain JSON (what keymap.json / settings.json would hold). To save plain JSON instead of .js, use Save as… and give the file a .json name.</li>
+            <li>The CIRCUITPY drive has to be visible and writable: start the macropad while holding the encoder (programming mode). The macropad restarts by itself after a save and uses the new file straight away.</li>
+        </ul>
+
+        <h3>Encoder Setup</h3>
+        <p>Each layer has its own encoder icon and two actions: one for <strong>clockwise</strong> and one for <strong>counter-clockwise</strong>. Any key action works on the encoder.</p>
+        <ul>
+            <li><strong>Presets</strong> fill in both directions: Volume, Scroll, Zoom, Next/previous track, Browser tabs, Redo/undo, Arrow keys, Page up/down, Screen brightness, Mouse move.</li>
+            <li><strong>Speed up when turned fast</strong> repeats the action more times on fast spins (amounts set by ENC * FS / ENC * MD in VARIABLES). Use it for volume, scrolling and arrows; leave it off for tabs, tracks or undo.</li>
+            <li><strong>Swap directions</strong> flips clockwise and counter-clockwise.</li>
+        </ul>
+
+        <h3>Layer Lights</h3>
+        <p>The LIGHTS settings (scene and colours) are used on every layer. A layer can have its own scene and colours (palette colours or a custom colour): while that layer is active they replace the LIGHTS settings, and switching to a layer without its own lights goes back to the LIGHTS settings. Brightness and speed always come from the macropad's LIGHTS menu.</p>
+        <p>When the page is opened from the drive and the macropad's settings say no LED strip is fitted (<strong>LED count</strong> 0, the default), the Lights section is hidden; <strong>Show anyway</strong> brings it back, and lights already set on a layer stay in the keymap. </p>
+
+        <h3>Macros</h3>
+        <ul>
+            <li><strong>+ Add step</strong> adds a step; ▲ ▼ reorder, ✕ removes, and ×N repeats a step N times</li>
+            <li><strong>● Record</strong> / <strong>● Record more</strong> records keystrokes into the macro (see <a href="#macro-recorder">Recording Macros</a>); an empty key has <strong>● Record macro</strong></li>
+            <li><strong>Paste JSON</strong> adds steps as JSON, e.g. copied from another key (output from the old Macro Recorder page still works)</li>
+        </ul>
+
+        <h4>Saving, Loading and Copying a Key</h4>
+        <p>Each key card has three small buttons at the top right:</p>
+        <ul>
+            <li><strong>Export key</strong> (disk icon) saves the key as <code>ICON.mp1key.json</code>, e.g. <code>SEND.mp1key.json</code>, to share one key or macro with another macropad.</li>
+            <li><strong>Import key</strong> (folder icon) puts an exported key into this key, asking first if the key isn't empty. Undo takes it back.</li>
+            <li><strong>{ }</strong> shows the key as text, e.g. <code>{"icon": "CPY", "combo": ["CONTROL", "C"]}</code>. <strong>⧉ Copy</strong> copies it; edit the text or paste a key in and press <strong>Apply</strong>. Handy for copying a key to another layer.</li>
+        </ul>
+        <p>A key keeps everything: icon, action or macro, hold-to-confirm and repeat. Saving a key from a secret layer asks first, because the file contains what it types as plain text.</p>
+
+        <!-- keymap.js format -->
+        <!-- Sharing layers -->
+        <h3 id="sharing-layers">Sharing Layers Between Macropads</h3>
+        <p>Pass a whole layer (all 8 keys, the encoder and any macros) to another macropad, for example a set of keys for filling in a complex form. The buttons are next to the templates:</p>
+        <ul>
+            <li><strong>Export layer</strong> (disk icon) saves the selected layer as <code>NAME.mp1layer.json</code> to send or keep.</li>
+            <li><strong>Import layer</strong> (folder icon) on the other macropad's configurator adds a layer from such a file.</li>
+            <li><strong>{ }</strong> shows the selected layer as text. <strong>⧉ Copy</strong> copies it to paste into an email or chat message. To import a layer someone sent you as text, replace the text in the box with theirs and press <strong>Import as new layer</strong> (the selected layer isn't changed).</li>
+            <li>An imported layer is added as a <strong>new layer at the end</strong> (it never replaces anything), the page switches to it, and a note lists anything that was adjusted. Check it, then save the keymap as usual. <strong>Undo</strong> takes the import back.</li>
+        </ul>
+        <p>What happens to device-specific details:</p>
+        <ul>
+            <li><strong>Layer lights</strong> are exported, but left out on import when the receiving macropad has no LED strip (its settings say LED count 0). If the page can't see that macropad's settings (not opened from its drive), they're kept; a macropad without a strip ignores them anyway.</li>
+            <li><strong>Default</strong> and <strong>secret</strong> are never carried over: an imported layer is a regular layer, so it can't change which layer starts up or take over a secret slot. Exporting a secret layer asks first, because the file contains what its keys type as plain text.</li>
+            <li><strong>Same name:</strong> if the macropad already has a layer with that name, the imported one gets a number (FORMS → FORMS2).</li>
+            <li>Hold-to-confirm, repeat, macros and the encoder all come across unchanged. Importing a whole keymap file (keymap.js / keymap.json, version 1 too) adds all its layers after asking. The configurator holds up to 10 layers.</li>
+        </ul>
+
+        <!-- Settings Editor -->
+        <h2 id="settings-editor">Settings Editor (Web Tool)</h2>
+        <p>Open <code>settings_editor.html</code> from the CIRCUITPY drive (or <strong>Settings</strong> in the top bar of any of the web pages) to edit settings.js on a computer: every setting the macropad has, including the ones only settings.js has.</p>
+        <ul>
+            <li>Settings are grouped like the device's menus: <strong>Gestures</strong>, <strong>Variables</strong>, <strong>Screen</strong>, <strong>Lights</strong>, <strong>Sound</strong>, plus <strong>Encoder hardware</strong>, <strong>Mouse jiggle</strong> and <strong>Advanced</strong>. The sidebar on the left jumps to each section, highlights the one you're in, and shows how many settings you've changed in each.</li>
+            <li>Add-on settings only appear when the add-on is fitted, like the LIGHTS and SOUND menus on the macropad: the LED strip settings (and <strong>LEDs off with the screen</strong>) once <strong>LED count</strong> is above 0, and the sound settings once a <strong>Buzzer</strong> type is picked (beep volume for passive buzzers only, "sounds on low" for active ones only). Hidden settings keep their values and are still saved.</li>
+            <li>Each setting shows where it is on the macropad (for example <code>VARIABLES › LONG PRESS</code>), or <code>settings.js</code> if it has no menu item, and its default.</li>
+            <li>Settings you've changed since opening the file get a purple edge, and the sidebar and the save bar count them (with nothing opened, the defaults are what you started from). <strong>↺ undo</strong> puts one back to the file's value; <strong>default</strong> (shown when a value differs from the default) sets it to the default, and <strong>Reset all to defaults</strong> does that for every setting. After saving, the saved values are the new starting point.</li>
+            <li>It checks your values like the macropad does at start-up. A value outside the menu's usual range is a warning (the macropad still accepts it). Settings missing from a file you open use their default, and unknown settings are left out.</li>
+            <li>The saved file has every setting, one per line, in the same layout the macropad writes itself.</li>
+            <li>Open and save it with the same buttons as the configurator (see <a href="#opening-saving">Opening and Saving Files</a>).</li>
+        </ul>
+
+        <h2 id="keymap-format">keymap.js Format</h2>
+        <p>The configurator writes this for you, but the file is easy to read and edit by hand. It's plain JSON on one script line, <code>var MP1_KEYMAP = { ... };</code>, so the web pages beside it on the drive can load it automatically (browsers let a page load a script from its folder, but not read a .json file there). Each layer keeps all its information together:</p>
+        <pre>// MP1 macropad keymap. Edit with keymap_configurator.html (the JSON inside is the same as keymap.json).
+var MP1_KEYMAP = {
+  "version": 2,
+  "layers": [
+    {
+      "name": "MEDIA",
+      "default": true,
+      "keys": [
+        {"icon": "PLY", "media": "PLAYPAUSE"},
+        {"icon": "VOL+", "media": "VOL_UP", "repeat": true},
+        {"icon": "OFF", "combo": ["WINDOWS", "X"], "confirm": true},
+        {"icon": "HI",  "text": "Hello"},
+        {"icon": "WEB", "url": "https://example.com"},
+        {"icon": "NOTE", "app": "notepad.exe"},
+        {"icon": "MAC", "sequence": [{"key": "A"}, {"delay": 0.1}, {"text": "done"}]},
+        {"icon": "---"}
+      ],
+      "encoder": {"icon": "VOL", "cw": {"media": "VOL_UP"}, "ccw": {"media": "VOL_DN"}, "accel": true},
+      "lights": {"scene": "breathing", "color1": "BLUE", "color2": "#FF8800"}
+    },
+    {"name": "VAULT", "secret": true, "keys": [{"icon": "PW", "text": "hunter2\n"}]},
+    {"name": "VAULT2", "secret": 2, "keys": [{"icon": "PIN", "text": "1234"}]}
+  ]
+};</pre>
+        <ul>
+            <li><strong>Layer fields:</strong> <code>name</code>, <code>default</code> (true on one layer), <code>secret</code> (optional: <code>true</code> or <code>1</code> = Secret 1, <code>2</code> = Secret 2; one layer each), <code>keys</code> (up to 8), <code>encoder</code></li>
+            <li><strong>Keys:</strong> an <code>icon</code> plus exactly one action. <code>null</code> is an empty key; <code>{"icon": "---"}</code> is a label with no action.</li>
+            <li><strong>Repeat while held</strong> (optional): <code>"repeat": true</code> on a key with a <code>media</code>, <code>scroll</code>, <code>mouse</code>, <code>text</code> or <code>sequence</code> action fires it again and again while the key is held, after <strong>RPT DELAY</strong> and at <strong>RPT RATE</strong> (VARIABLES menu). Not needed for <code>key</code>, <code>combo</code> or <code>click</code>: those are held down while you hold the key, so the computer repeats them itself like a normal keyboard. The start-up check reports <code>repeat</code> on any other action.</li>
+            <li><strong>Hold to confirm</strong> (optional): <code>"confirm": true</code> on any key with an action makes it fire only after being held for <strong>CONFIRM T</strong> (see <a href="#hold-to-confirm">Hold-to-Confirm Keys</a>). Not together with <code>repeat</code>.</li>
+            <li><strong>Actions:</strong> <code>text</code>, <code>key</code>, <code>combo</code>, <code>media</code>, <code>url</code>, <code>app</code>, <code>scroll</code> (wheel clicks, + is up), <code>mouse</code> ([x, y] pixels), <code>click</code> ("left", "right" or "middle"), <code>sequence</code> (a macro: a list of actions), <code>delay</code> (seconds, inside sequences)</li>
+            <li><strong>Media names:</strong> PLAYPAUSE, NEXT, PREV, STOP, FAST_FORWARD, REWIND, MUTE, VOL_UP, VOL_DN, EJECT, BRIGHTNESS_UP, BRIGHTNESS_DOWN</li>
+            <li><strong>Encoder:</strong> <code>icon</code>, <code>cw</code> (clockwise action), <code>ccw</code> (counter-clockwise action), <code>accel</code> (speed up on fast spins)</li>
+            <li><strong>Lights</strong> (optional): <code>scene</code> (static, breathing, reactive, pulse, twinkle, lightning, strobe, rainbow, cycle, off), <code>color1</code>, <code>color2</code>. Colours are palette names (RED, VERMILION, ORANGE, AMBER, YELLOW, LIME, GREEN, MINT, CYAN, SKY, BLUE, INDIGO, PURPLE, MAGENTA, PINK, ROSE, WHITE, WARM_WHITE) or <code>"#RRGGBB"</code>.</li>
+            <li>Device behavior (timings, timeouts, encoder speed) belongs in settings.js, never in keymap.js.</li>
+            <li><strong>Editing by hand:</strong> change only what's between the first <code>{</code> and the last <code>}</code>; leave the <code>var MP1_KEYMAP =</code> line start and the final <code>;</code> alone. settings.js and default.js work the same way (<code>MP1_SETTINGS</code>, <code>MP1_DEFAULTS</code>).</li>
+            <li><strong>Plain .json still works:</strong> the macropad reads <code>keymap.json</code>, <code>settings.json</code> and <code>default.json</code> if there's no .js file of the same name (if both are there, the .js file wins). The macropad itself saves settings.js.</li>
+        </ul>
+
+        <!-- Start-up errors -->
+        <h2 id="startup-errors">Start-up Error Check</h2>
+        <p>At power-up the macropad checks keymap.js and settings.js. If anything is wrong, it shows an error screen instead of crashing:</p>
+        <ul>
+            <li>The top line shows <strong>ERROR 1/3 press=OK</strong>, followed by the problem and where it is, e.g. <em>MEDIA key 3: unknown key CTRL</em></li>
+            <li><strong>Turn the encoder</strong> to step through the errors; <strong>press</strong> to continue</li>
+            <li>A key with a problem shows <strong>ERR</strong> as its icon and does nothing; the rest of the layer works normally</li>
+            <li>A macro with a bad step is disabled entirely rather than run partway</li>
+            <li>If keymap.js is missing, unreadable, or still in the version 1 format, the macropad starts with an empty <strong>NO KEYMAP</strong> layer. Menus, timer and jiggle still work.</li>
+            <li>Bad values in settings.js are reported and replaced by their defaults</li>
+            <li>If an add-on (LED strip or buzzer) is switched on in settings.js but fails to start, it's reported and the macropad carries on without it</li>
+        </ul>
+        <h3>Watchdog (Automatic Restart)</h3>
+        <p>If the macropad ever freezes completely, a hardware watchdog restarts it after about 8 seconds, so it never needs unplugging. Normal use never trips it: the firmware checks in with the watchdog constantly, including during pauses, long macros and long typed text.</p>
+        <ul>
+            <li>After a watchdog restart, the start-up error screen says so. If it keeps happening, note what you were doing at the time (which key, which layer).</li>
+            <li>A key or macro that was running when it froze may not have finished, and keys that were held down are released by the restart.</li>
+            <li>Pressing Ctrl+C in the serial console turns the watchdog off, so <code>ledtest</code>, <code>enctest</code> and the <code>&gt;&gt;&gt;</code> prompt work normally. Ctrl+D restarts the macropad with it back on.</li>
+            <li>To turn it off, set <code>"watchdog": false</code> in settings.js and restart.</li>
+        </ul>
+
+        <h3>Errors While Running</h3>
+        <ul>
+            <li>If something goes wrong while the macropad is running, it releases every key and mouse button (so nothing stays stuck), shows <strong>Runtime error: …</strong> on the same error screen, and keeps working after you press the encoder</li>
+        </ul>
+        <p>Fix the file in the Keymap Configurator (load it, check the problems list, download it again).</p>
+
+        <!-- Macro Recorder -->
+        <h2 id="macro-recorder">Recording Macros</h2>
+        <p>The macro recorder is built into the <a href="#keymap-configurator">Keymap Configurator</a>: it records keystrokes straight into a key's macro, with nothing to copy or paste.</p>
+
+        <h3>Recording</h3>
+        <ol>
+            <li>On an empty key, click <strong>● Record macro</strong>. (On a key that's already a Macro, click <strong>● Record</strong>, or <strong>● Record more</strong> to add onto the end.)</li>
+            <li>The recorder opens and is already recording: the red border pulses. <strong>Type the macro.</strong> Each key shows up as a step while you type: <em>Types "hello"</em>, <em>Tab</em>, <em>Ctrl + C</em>, <em>Enter</em>…</li>
+            <li><strong>Stop</strong> with the <strong>■ Stop</strong> button or by <strong>holding Esc for 1 second</strong> (a quick Esc tap is recorded as Esc). Switching to another window also stops it. <strong>● Record</strong> carries on from where you stopped.</li>
+            <li>Pick the <strong>Pauses</strong> (you can change this after recording and the steps update straight away):
+                <ul>
+                    <li><strong>None</strong>: no waiting between steps</li>
+                    <li><strong>After keys</strong> (default): a short wait, 0.05 s unless you change it, after each key or combo, so the computer has time to react (e.g. a Tab moving to the next box)</li>
+                    <li><strong>As recorded</strong>: the pauses you made while recording (gaps under 0.25 s count as normal typing)</li>
+                </ul>
+            </li>
+            <li><strong>⌫ Last step</strong> takes back the last step. <strong>Done</strong> keeps the recording; <strong>Discard</strong> throws it away (a key that had no action goes back to none).</li>
+        </ol>
+
+        <h3>What gets recorded</h3>
+        <ul>
+            <li>Typing becomes one <strong>Type text</strong> step. Shift is part of the character, so capitals and symbols just type.</li>
+            <li>Keys held with Ctrl, Alt or Win become a <strong>Key combo</strong>, e.g. Ctrl + Shift + T. A modifier pressed on its own (just Ctrl) is recorded as that key.</li>
+            <li>Holding a key down records it once; the same key pressed several times in a row becomes one step with ×N.</li>
+            <li>Keys the macropad can't send (accented letters typed with dead keys, media keys and so on) are skipped, with a note.</li>
+            <li><strong>Windows and the browser keep some keys to themselves</strong> and the page never sees them: the Windows key, Alt+Tab, Ctrl+Alt+Del, and browser shortcuts like Ctrl+W, Ctrl+T or Ctrl+N. Add those afterwards with <strong>+ Add step → Key combo</strong>.</li>
+        </ul>
+        <p>After <strong>Done</strong> the steps are an ordinary macro: reorder them, change a ×N, edit a wait or add steps by hand. The whole recording is one step for <strong>Undo</strong>.</p>
+
+        <!-- Tips & Tricks -->
+        <h2 id="tips-tricks">Tips & Tricks</h2>
+
+        <h3>Avoid Locking Yourself Out</h3>
+        <p>Always keep at least one key as TAB or ENTER so you can navigate if something goes wrong.</p>
+
+        <h3>Layer Organization</h3>
+        <ul>
+            <li><strong>Layer 1 (default):</strong> Most frequently used actions</li>
+            <li><strong>Secret layer:</strong> Sensitive credentials</li>
+            <li><strong>Other layers:</strong> Organized by context (work, media, gaming, etc.)</li>
+        </ul>
+
+        <h3>Encoder Functions</h3>
+        <p>Make your encoder context-aware (each layer has its own; see <a href="#keymap-configurator">Encoder Setup</a>):</p>
+        <ul>
+            <li><strong>Work layer:</strong> Zoom in/out or redo/undo</li>
+            <li><strong>Media layer:</strong> Volume control or next/previous track</li>
+            <li><strong>Browser layer:</strong> Scroll or tab switching</li>
+            <li><strong>Editing layer:</strong> Arrow keys to step through text or timelines</li>
+        </ul>
+
+        <h3>Timeout Adjustments</h3>
+        <ul>
+            <li><strong>Short timeouts (3-5s):</strong> Faster workflow, less accidental triggers</li>
+            <li><strong>Long timeouts (10-30s):</strong> More forgiving, better for browsing</li>
+        </ul>
+
+        <h3>File Management</h3>
+        <ul>
+            <li><strong>Always backup keymap.js</strong> before making changes</li>
+            <li>Keep <strong>default.js</strong> safe - it's your reset point</li>
+            <li><strong>settings.js</strong> stores your timing preferences</li>
+        </ul>
+
+        <h3>Macro Best Practices</h3>
+        <ul>
+            <li>Add small delays (50-100ms) between actions for reliability</li>
+            <li>Test macros on non-critical tasks first</li>
+            <li>Use TAB instead of mouse clicks when possible (more reliable)</li>
+        </ul>
+
+        <!-- Troubleshooting -->
+        <h2 id="troubleshooting">Troubleshooting</h2>
+
+        <h4>Nothing starts; the serial console shows MemoryError:</h4>
+        <ul>
+            <li>The macropad ran out of memory while loading. Make sure every file in <code>lib/macropad/</code> came from the same firmware version (old and new files mixed can load extra code), and remove any old files that aren't in the <a href="#file-structure">file list</a>.</li>
+            <li>A very large keymap.js (many layers with long text or macros) uses more memory. The serial console prints <code>Free memory at start-up</code>; above roughly 20,000 bytes is comfortable.</li>
+        </ul>
+
+        <h4>Keys not working / key shows ERR:</h4>
+        <ul>
+            <li>Restart the macropad and read the <a href="#startup-errors">start-up error screen</a></li>
+            <li>Check that keymap.js is in the root of the CIRCUITPY drive</li>
+            <li>Load the file in the Keymap Configurator and check its problems list</li>
+        </ul>
+
+        <h4>Hold + turn gestures don't work, or run the wrong one:</h4>
+        <ul>
+            <li>Keep the encoder pressed for the whole turn and turn at least <strong>HOLD TURN</strong> clicks (GESTURES menu, default 5). Lower it if 5 feels like a lot.</li>
+            <li>The direction is the way the encoder turned overall, so a click of wobble as you stop doesn't change it. A brief flicker in the button contact while you turn (under 0.08 s) is ignored.</li>
+            <li>To see exactly what the macropad detects, set <code>"debug_gestures": true</code> in settings.js, restart, and open the serial console (Mu, Thonny or similar). Each press prints a line like:<br>
+                <code>button: held 651 ms, turned 6 clicks (net -6), contact flickers 0, mode 0, clicks before 0 -&gt; gesture_hold_ccw = jiggle</code><br>
+                <em>turned</em> = all clicks, <em>net</em> = clockwise minus counter-clockwise, <em>contact flickers</em> = how often the button contact briefly opened while held. Set it back to false when done. With debug on, every encoder click also prints its position, so you can see each click's direction.</li>
+            <li>To test the encoder on its own: in the serial console press Ctrl+C, then any key for the <code>&gt;&gt;&gt;</code> prompt, and type <code>import enctest</code>. Turn a few clicks each way, with and without the button pressed. <code>enctest.raw()</code> shows the A/B pin levels instead. Ctrl+D restarts the macropad.</li>
+        </ul>
+
+        <h4>Encoder skips clicks, or sometimes counts the wrong way:</h4>
+        <ul>
+            <li><strong>Check the encoder's power and ground wires first.</strong> A loose VCC (+) or GND wire between the board and the encoder causes random missed clicks, phantom clicks and wrong-way steps, often worse when the encoder is pressed.</li>
+            <li><strong>Only every other click registers</strong> (in normal turning too): the encoder moves 2 pin steps per click instead of the usual 4. Check with <code>enctest.counted(2)</code> in the serial console: if every click now counts exactly 1, set <code>"encoder_divisor": 2</code> in settings.js and restart.</li>
+            <li><strong>A click registers when you press or release the encoder:</strong> pressing rocks the shaft enough to move some encoders. The firmware ignores encoder movement for <code>encoder_press_guard</code> seconds after the button contact changes (settings.js, default 0.06; raise it a little if it still happens, 0 turns it off).</li>
+            <li><strong>Random missed clicks or wrong-way steps</strong>, worst while pressing the encoder: the encoder's contacts are bouncing (electrically noisy). The firmware can't filter this; it's fixed in hardware with a small filter on each encoder pin:
+                <ul>
+                    <li>a 10 kΩ resistor from A to 3.3V and from B to 3.3V (the RP2040's built-in pull-ups are weak), and</li>
+                    <li>a 0.01 µF (10 nF) capacitor from A to GND and from B to GND, close to the encoder. Up to 0.1 µF is fine for a hand-turned encoder.</li>
+                </ul>
+                Many encoder breakout boards (e.g. KY-040) already have the resistors but not the capacitors. Keep the encoder's ground wire short and solid; a poor ground makes bounce much worse.</li>
+        </ul>
+
+        <h4>Screen is blank or dim, or a key press did nothing:</h4>
+        <ul>
+            <li>The <a href="#screen-saver">screen saver</a> has dimmed or switched off the screen. Press any key or the encoder to wake it. While the screen is off, that first press only wakes it.</li>
+            <li>Change the timing or turn it off in Settings → SCREEN.</li>
+        </ul>
+
+        <h4>Screen shows NO KEYMAP:</h4>
+        <ul>
+            <li>keymap.js is missing, not valid JSON, or still in the version 1 format. Load it in the Keymap Configurator (it converts version 1 files), download it again, and copy it to the drive.</li>
+        </ul>
+
+        <h4>Timer not visible:</h4>
+        <ul>
+            <li>Timer shows in top bar on all layers</li>
+            <li>Only visible when timer is running or set</li>
+        </ul>
+
+        <h4>Encoder feels unresponsive:</h4>
+        <ul>
+            <li>Adjust encoder speed settings in VARIABLES menu</li>
+            <li>Check that you're not in a menu (medium press to exit)</li>
+        </ul>
+
+        <h4>Macropad feels sluggish or stutters:</h4>
+        <ul>
+            <li>Set <code>"loop_stats": true</code> in settings.js and open the serial console. Every 5 seconds it prints a line like <em>loop: 4100 passes/5s, avg 0.20 ms, slowest 23.5 ms, free memory 98000 bytes</em>. The slowest pass is usually a screen update; occasional spikes of a few ms are memory clean-up. Set it back to false when done.</li>
+            <li>The OLED runs at 400 kHz (<code>I2C_FREQUENCY</code> in wiring.py). If the screen shows glitches or garbage, set it back to <code>100000</code>.</li>
+        </ul>
+
+        <h4>Encoder action goes the wrong way on one layer:</h4>
+        <ul>
+            <li>In the Keymap Configurator, open that layer and click <strong>Swap directions</strong></li>
+        </ul>
+
+        <h4>Everything on the encoder is reversed (menus, gestures and actions):</h4>
+        <ul>
+            <li>The encoder is wired the other way round. Set <code>"encoder_reverse": true</code> in settings.js (and default.js, so RESET DFLT keeps it).</li>
+        </ul>
+
+        <h4>Settings reset on power cycle:</h4>
+        <ul>
+            <li>Settings must be saved to settings.js</li>
+            <li>Use VARIABLES menu to adjust and save</li>
+            <li>Saving only works when the macropad started normally, not in programming mode (USB drive visible)</li>
+        </ul>
+
+        <h4>LED strip dark:</h4>
+        <ul>
+            <li>Set <code>"led_count"</code> in settings.js to the number of LEDs (e.g. 4) and make sure <code>lib/neopixel.mpy</code> is on the drive</li>
+            <li>Check that the LIGHTS scene isn't OFF and BRIGHTNESS isn't at its lowest</li>
+            <li>Open the serial console (Thonny, Mu or any serial terminal). At start-up the macropad prints <em>LED strip: started, 4 LEDs on board.GP19…</em> and then <em>LED strip: first colour sent…</em>; a failure is printed there too.</li>
+            <li>Run the standalone LED test: in the serial console press Ctrl+C, then Enter, then type <code>import ledtest</code>. Each LED should light red, green, blue and white in turn, then all orange. If nothing lights, check the strip's power, ground and data wiring to GP19. Ctrl+D restarts the macropad afterwards.</li>
+        </ul>
+
+        <h4>Buzzer silent:</h4>
+        <ul>
+            <li>Set <code>"buzzer"</code> in settings.js to <code>"passive"</code> or <code>"active"</code>, and check it's wired + to GP17 and – to GND</li>
+            <li>An active buzzer that's on all the time (or never) may need <code>"buzzer_active_low": true</code></li>
+            <li>Key click and layer tone are off by default; turn them on in SOUND</li>
+        </ul>
+
+        <h4>Mouse jiggle not working:</h4>
+        <ul>
+            <li>Check for "J" indicator in top-right</li>
+            <li>Some systems may ignore very small movements</li>
+        </ul>
+
+        <!-- File Structure -->
+        <h2 id="file-structure">File Structure Reference</h2>
+        <p><strong>On CIRCUITPY drive:</strong></p>
+        <pre>/
+├── code.py              (Hardware setup, starts the app)
+├── keymap.js            (Your key assignments; keymap.json is still read if there's no keymap.js)
+├── settings.js          (Timing and behavior settings; or settings.json)
+├── default.js           (Default settings backup; or default.json)
+├── boot.bmp             (Start-up image, 128 x 64 black and white)
+├── boot.py              (Disables USB Storage access)
+├── keymap.py            (Processes keymapping)
+├── wiring.py            (Hardware pin definitions, OLED I2C speed)
+├── ledtest.py           (Standalone LED strip test, run from the serial console)
+├── enctest.py           (Standalone encoder test, run from the serial console)
+├── keymap_configurator.html, settings_editor.html, help.html   (Web tools and this guide)
+├── settings_editor.html (Settings editor web page)
+├── theme.css, theme.js  (Shared look and light/dark switch for the web pages)
+├── mp1files.js          (Open / save files for the configurator and settings editor)
+└── lib/
+    └── macropad/
+        ├── app.py           (Main loop, screens, keys)
+        ├── controls.py      (Encoder turns and button presses, gestures)
+        ├── commands.py      (Gesture functions, menu selections, layer switching)
+        ├── extras.py        (Layer keys, menu animation, stopwatch, screen saver, Caps Lock)
+        ├── guard.py         (Hardware watchdog: restarts the macropad if it freezes)
+        ├── modes.py         (Shared constants)
+        ├── actions.py       (Keys, macros, media, encoder, jiggle)
+        ├── clock.py         (Millisecond timing that stays exact however long it's on)
+        ├── display.py       (OLED screen)
+        ├── gestures.py      (Functions for encoder gestures)
+        ├── menus.py         (Layer/settings menus, VARIABLES editor)
+        ├── timer.py         (Countdown timer)
+        ├── stopwatch.py     (Stopwatch)
+        ├── lights.py        (Optional LED strip scenes)
+        ├── sound.py         (Optional buzzer tones)
+        ├── jsfile.py        (Reads keymap / settings files in .js or .json form)
+        └── settings.py      (Loads/saves settings.js)
+    (lib/neopixel.mpy is needed for the LED strip)</pre>
+
+        <!-- Quick Reference -->
+        <h2 id="quick-reference">Quick Reference Card</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>Command</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Open layers menu</td>
+                    <td>Click the encoder</td>
+                </tr>
+                <tr>
+                    <td>Open settings</td>
+                    <td>Long press encoder (1.5s)</td>
+                </tr>
+                <tr>
+                    <td>Exit menu</td>
+                    <td>Medium press encoder (0.4s)</td>
+                </tr>
+                <tr>
+                    <td>Layer keys (default)</td>
+                    <td>Double click encoder</td>
+                </tr>
+                <tr>
+                    <td>Timer (default)</td>
+                    <td>Triple click encoder</td>
+                </tr>
+                <tr>
+                    <td>Toggle jiggle (default)</td>
+                    <td>Hold + turn clockwise</td>
+                </tr>
+                <tr>
+                    <td>Toggle secret (default)</td>
+                    <td>Hold + turn counter-clockwise</td>
+                </tr>
+                <tr>
+                    <td>Stopwatch (default)</td>
+                    <td>Click, then hold + turn clockwise</td>
+                </tr>
+                <tr>
+                    <td>Change gestures</td>
+                    <td>Settings → GESTURES</td>
+                </tr>
+                <tr>
+                    <td>Variables menu</td>
+                    <td>Settings → VARIABLES</td>
+                </tr>
+                <tr>
+                    <td>Timer</td>
+                    <td>Settings → TIMER</td>
+                </tr>
+                <tr>
+                    <td>Stopwatch</td>
+                    <td>Settings → STOPWATCH</td>
+                </tr>
+                <tr>
+                    <td>Edit keymap</td>
+                    <td>Settings → CONFIGURATOR</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <footer>
+            <p><strong>Need Help?</strong><br>
+            Visit: <a href="https://mp1-help.theornerymaker.com" target="_blank">https://mp1-help.theornerymaker.com</a></p>
+            <p><strong>Version:</strong> 2.1 (keymap format 2)<br>
+            <strong>Last Updated:</strong> November 2026</p>
+        </footer>
+    </main>
+    </div>
+
+    <script>
+    // Highlight the section being read in the contents list
+    (function () {
+        var links = {};
+        document.querySelectorAll('.toc a').forEach(function (a) { links[a.getAttribute('href').slice(1)] = a; });
+        if (!('IntersectionObserver' in window)) return;
+        var observer = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) {
+                if (!e.isIntersecting) return;
+                document.querySelectorAll('.toc a.current').forEach(function (a) { a.classList.remove('current'); });
+                var a = links[e.target.id];
+                if (a) a.classList.add('current');
+            });
+        }, {rootMargin: '-80px 0px -70% 0px'});
+        document.querySelectorAll('.doc h2[id]').forEach(function (h) { observer.observe(h); });
+    })();
+    </script>
+</body>
+</html>

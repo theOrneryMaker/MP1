@@ -1,0 +1,2110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MP1 Macropad Configurator</title>
+    <link rel="stylesheet" href="theme.css">
+    <script src="theme.js"></script>
+    <script src="mp1files.js"></script>
+    <!-- The keymap beside this page, if there is one (defines MP1_KEYMAP). A missing file is fine. -->
+    <script src="keymap.js"></script>
+    <!-- Device settings beside this page (MP1_DEFAULTS / MP1_SETTINGS), for the cheat sheet's encoder gestures. Optional. -->
+    <script src="default.js"></script>
+    <script src="settings.js"></script>
+    <style>
+        /* Configurator-only styles (colours come from theme.css) */
+        .load-row { display: flex; flex-wrap: wrap; gap: 2px 4px; align-items: center; margin: 0 -4px; }
+        .drive { display: inline-flex; align-items: center; gap: 8px; margin: 4px; padding: 6px 12px; border-radius: 9px;
+                 background: var(--panel-2); border: 1px solid var(--border); font-weight: 600; font-size: 0.9em; }
+        .drive .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
+        .drive.on .dot { background: var(--ok); }
+        .toast { color: var(--ok); font-weight: 600; }
+        .layer-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .layer-tab {
+            padding: 6px 14px; border-radius: 9px; cursor: pointer; font-weight: 650; font-size: 0.92em;
+            border: 1px solid var(--border-strong); background: var(--panel-2);
+            box-shadow: inset 0 -2px 0 var(--key-edge); user-select: none;
+        }
+        .layer-tab:hover { background: var(--border); }
+        .layer-tabs { align-items: center; }
+        .tab-move { margin: 0 -3px; padding: 4px 7px; font-size: 0.8em; line-height: 1; border-radius: 7px; color: var(--orange); }
+        .layer-json-btn { font-family: var(--mono); font-size: 0.85em; }
+        .layer-tab.active { background: var(--orange); border-color: var(--orange); color: var(--orange-ink); }
+        .layer-tab.active .badge { background: rgba(0, 0, 0, 0.16); color: inherit; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; margin: 0 -4px 6px; }
+        .toolbar select { width: auto; margin: 4px; }
+        .layer-props { display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: flex-end; margin: 6px 0 4px; }
+        .layer-props .name-field { flex: 1 1 240px; }
+        .checkbox-inline { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+        .checkbox-inline label { margin: 0; display: inline; color: var(--text); font-weight: 600; }
+        .secret-field { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+        .secret-field label { margin: 0; color: var(--text); font-weight: 600; white-space: nowrap; }
+        .secret-field select { width: auto; }
+
+        /* Keys: 4 x 2 like the pad */
+        .key-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 6px 0 16px; }
+        @media (max-width: 1150px) { .key-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 640px)  { .key-grid { grid-template-columns: minmax(0, 1fr); } }
+        .encoder-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 6px 0 16px; }
+        .key-config {
+            position: relative; min-width: 0; padding: 14px;
+            background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .key-config:hover { border-color: var(--border-strong); }
+        .key-config:focus-within { border-color: var(--orange); box-shadow: 0 0 0 3px var(--orange-soft); }
+        .key-config.changed { border-left: 3px solid var(--purple); }          /* changed since the keymap was opened */
+        .layer-tab .mod { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--purple);
+                          margin-left: 7px; vertical-align: 2px; }
+        .layer-tab.active .mod { background: currentColor; }
+        .key-config h3 { font-size: 0.95em; font-weight: 750; margin-bottom: 4px; }
+        .drag-handle { cursor: grab; user-select: none; }
+        .drag-handle::before { content: '⠿ '; color: var(--muted); }
+        .key-config.drag-over, .oled .tile.drag-over { outline: 2px dashed var(--orange); outline-offset: 2px; }
+        .key-tools { position: absolute; top: 10px; right: 10px; display: flex; gap: 4px; }
+        .key-tools button { margin: 0; padding: 2px 7px; min-height: 24px; }
+        .json-btn { font-family: var(--mono); font-size: 0.78em; }
+        .ico { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+        .key-tools .ico { width: 14px; height: 14px; vertical-align: -2px; }
+        .icon-btn { padding-left: 11px; padding-right: 11px; }
+        /* Hover labels for icon-only buttons (data-tip) */
+        [data-tip] { position: relative; }
+        [data-tip]::after {
+            content: attr(data-tip); position: absolute; left: 50%; top: calc(100% + 7px); transform: translate(-50%, -3px);
+            padding: 4px 9px; border-radius: 7px; white-space: nowrap; pointer-events: none; z-index: 80;
+            background: var(--text); color: var(--bg, #fff); font: 600 12px/1.3 system-ui, sans-serif; letter-spacing: 0;
+            opacity: 0; transition: opacity 0.12s, transform 0.12s; transition-delay: 0s;
+        }
+        [data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 0.25s; }
+        .key-tools [data-tip]:last-child::after, .copy-btn[data-tip]::after { left: auto; right: 0; transform: translate(0, -3px); }
+        .key-tools [data-tip]:last-child:hover::after, .copy-btn[data-tip]:hover::after { transform: translate(0, 0); }
+        .code-box { position: relative; }
+        .copy-btn { position: absolute; top: 16px; right: 10px; margin: 0; }
+        .inline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        .inline > select, .inline > input { width: auto; flex: 1 1 90px; min-width: 0; }
+        .combo-key-selector { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+        .combo-key-selector select { min-width: 110px; flex: 1 1 110px; width: auto; }
+
+        /* Sequences */
+        .sequence-builder { border: 1px dashed var(--border-strong); border-radius: 10px; padding: 10px; margin-top: 10px; }
+        .step-row { display: flex; gap: 8px; align-items: flex-start; background: var(--panel); border: 1px solid var(--border);
+                    border-radius: 9px; padding: 8px; margin-bottom: 8px; }
+        .step-body { flex: 1; min-width: 0; }
+        .step-tools { display: flex; flex-direction: column; gap: 4px; align-items: center; font-size: 0.85em; color: var(--muted); }
+        .step-tools input { width: 56px; padding: 4px 6px; }
+        .step-tools button { margin: 0; padding: 2px 8px; font-size: 0.8em; }
+        .sequence-step-number { width: 24px; height: 24px; flex: 0 0 24px; border-radius: 7px; display: flex; align-items: center;
+                                justify-content: center; background: var(--purple); color: var(--purple-ink); font-weight: 700; font-size: 0.82em; }
+        .sequence-add-step { width: 100%; margin: 4px 0 0; background: transparent; border: 1px dashed var(--purple); color: var(--purple); box-shadow: none; }
+        .sequence-add-step:hover { background: var(--purple-soft); }
+        .macro-recorder-button { padding: 5px 10px; font-size: 0.82em; }
+
+        /* Lights */
+        .swatch { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--border-strong); flex: 0 0 28px; }
+        input[type="color"] { width: 48px; height: 32px; padding: 0; border: none; background: none; flex: 0 0 48px; }
+
+        /* Screen preview: the OLED behind its bezel. Each character sits in its own 6x12-pixel
+           cell (18x36 at 3x), like the macropad's built-in font. */
+        .preview-row { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; margin: 6px 0 4px; }
+        .oled {
+            position: relative; width: 384px; height: 192px; box-sizing: content-box; overflow: hidden; flex: 0 0 auto;
+            background: #000; border: 12px solid #0b0b0d; border-radius: 12px;
+            box-shadow: 0 0 0 1px var(--border-strong), inset 0 0 18px rgba(0, 0, 0, 0.9);
+        }
+        .oled .px { position: absolute; height: 36px; }
+        .oled .ch { position: absolute; top: 0; width: 18px; height: 36px; line-height: 36px; text-align: center;
+                    font-family: 'DejaVu Sans Mono', Consolas, 'Lucida Console', Menlo, 'Liberation Mono', monospace;
+                    font-weight: normal; font-size: 31px; color: #f4f8ff; white-space: pre; }
+        .oled .err .ch { color: #ff7b7b; }
+        .oled .tile { position: absolute; width: 90px; height: 66px; border-radius: 6px; cursor: grab; }
+        .oled .tile:hover { background: rgba(232, 119, 46, 0.18); }
+        .preview-panel { position: fixed; right: 18px; bottom: 86px; z-index: 60; width: 434px; box-sizing: border-box; padding: 10px 12px 12px;
+                         background: var(--panel); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow); }
+        .preview-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .preview-panel .hint { display: block; margin-top: 8px; }
+        #previewBtn.on { background: var(--orange); border-color: var(--orange); color: var(--orange-ink); }
+        @media (max-width: 480px) {
+            .preview-panel { right: 8px; left: 8px; width: auto; }
+            .oled { transform: scale(0.75); transform-origin: top left; margin-bottom: -48px; margin-right: -96px; }
+        }
+
+        /* Save */
+        .issues { margin: 6px 0 12px; }
+        .issues ul, .notice ul { margin: 6px 0 0 20px; }
+        #jsonOutput { font-family: var(--mono); font-size: 0.85em; height: 360px; margin-top: 8px; }
+        .savebar {
+            position: sticky; bottom: 12px; z-index: 40; margin-top: 18px;
+            display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px 8px 16px;
+            background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+            border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow);
+        }
+        .savebar .status { flex: 1 1 260px; font-weight: 600; }
+        .savebar .status a { font-weight: 600; }
+        .savebar button:disabled { opacity: 0.45; cursor: default; }
+
+        /* Macro recorder (records straight into a key's sequence) */
+        .rec-button { color: var(--error); font-weight: 700; }
+        .rec-content { max-width: 640px; height: auto; max-height: 88vh; }
+        .rec-content .json-modal-body { overflow: auto; gap: 10px; }
+        .rec-status { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px;
+                      border: 2px dashed var(--border-strong); background: var(--panel-2); font-weight: 650; }
+        .rec-status.live { border: 2px solid var(--error); box-shadow: 0 0 0 4px rgba(220, 60, 60, 0.15); }
+        .rec-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: 0 0 12px; }
+        .rec-status.live .rec-dot { background: var(--error); animation: recpulse 1s infinite; }
+        @keyframes recpulse { 50% { opacity: 0.25; } }
+        .rec-time { font-family: var(--mono); margin-left: auto; color: var(--muted); }
+        .rec-steps { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow: auto; border: 1px solid var(--border);
+                     border-radius: 10px; background: var(--panel); }
+        .rec-steps li { display: flex; gap: 10px; align-items: baseline; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+        .rec-steps li:last-child { border-bottom: none; }
+        .rec-steps li.old { color: var(--muted); }
+        .rec-steps li.wait { color: var(--muted); font-style: italic; }
+        .rec-steps .n { font-family: var(--mono); font-size: 0.8em; color: var(--muted); min-width: 22px; }
+        .rec-steps .x { margin-left: auto; font-family: var(--mono); font-size: 0.85em; color: var(--purple); }
+        .rec-steps .empty { color: var(--muted); justify-content: center; padding: 18px; }
+        .rec-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .rec-row > label { margin: 0 6px 0 0; font-weight: 650; color: var(--text); }
+        .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden; }
+        .seg button { margin: 0; border: none; border-radius: 0; box-shadow: none; padding: 5px 12px; background: var(--panel-2); }
+        .seg button.on { background: var(--purple); color: var(--purple-ink); }
+        .rec-row input[type="number"] { width: 80px; }
+        .rec-footer-left { margin-right: auto; display: flex; gap: 6px; }
+
+        /* Printable cheat sheet: only on paper, and only when printed with the Cheat sheet button */
+        #cheatSheet { display: none; }
+        @media print {
+            @page { margin: 12mm; }
+            body.print-cheats > *:not(#cheatSheet) { display: none !important; }
+            body.print-cheats { background: #fff !important; color: #000 !important; }
+            body.print-cheats #cheatSheet { display: block; }
+        }
+        .cs { font: 10pt/1.3 'Segoe UI', system-ui, sans-serif; color: #000; }
+        .cs h1 { font-size: 16pt; margin: 0 0 1mm; }
+        .cs .cs-sub { font-size: 8.5pt; color: #444; margin: 0 0 4mm; }
+        .cs-layer { break-inside: avoid; border: 1.2px solid #000; border-radius: 3mm; padding: 2.5mm 3mm 3mm; margin: 0 0 3.5mm; }
+        .cs-layer h2 { font-size: 12pt; margin: 0 0 2mm; display: flex; gap: 3mm; align-items: baseline; }
+        .cs-layer h2 small { font-size: 8pt; font-weight: 600; color: #444; }
+        .cs-keys { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.8mm; }
+        .cs-key { border: 1px solid #777; border-radius: 2mm; padding: 1.3mm 2mm; min-height: 11mm; }
+        .cs-key.empty { border-style: dashed; color: #999; }
+        .cs-icon { font-family: Consolas, 'DejaVu Sans Mono', monospace; font-weight: 700; font-size: 11.5pt; }
+        .cs-num { float: right; font-size: 7pt; color: #888; }
+        .cs-desc { font-size: 8pt; color: #222; overflow-wrap: anywhere; }
+        .cs-tag { display: inline-block; font-size: 6.5pt; font-weight: 700; border: 1px solid #000; border-radius: 1mm; padding: 0 1mm; margin: 0.6mm 1mm 0 0; }
+        .cs-enc { font-size: 8.5pt; margin-top: 2mm; }
+        .cs-enc .cs-icon { font-size: 10pt; margin-right: 2mm; }
+        .cs-knob { break-inside: avoid; border: 1.2px solid #000; border-radius: 3mm; padding: 2.5mm 3mm; }
+        .cs-knob h2 { font-size: 12pt; margin: 0 0 1.5mm; }
+        .cs-knob table { border-collapse: collapse; font-size: 8.5pt; }
+        .cs-knob td { padding: 0.6mm 6mm 0.6mm 0; vertical-align: top; }
+        .cs-knob td:first-child { font-weight: 700; white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <a class="brand" href="keymap_configurator.html"><span class="brand-keys"><span></span><span></span><span></span><span></span></span>MP1</a>
+        <nav class="nav">
+            <a class="active" href="keymap_configurator.html">Configurator</a>
+            <a href="settings_editor.html" target="_blank">Settings</a>
+            <a href="help.html" target="_blank">Help</a>
+        </nav>
+        <span class="spacer"></span>
+        <div class="theme-toggle" title="Housing colour: follow the computer, or pick light / dark">
+            <button data-mode="auto" onclick="setTheme('auto')">Auto</button>
+            <button data-mode="light" onclick="setTheme('light')">Light</button>
+            <button data-mode="dark" onclick="setTheme('dark')">Dark</button>
+        </div>
+    </header>
+
+    <main class="page">
+        <h1 class="page-title">Keymap Configurator</h1>
+        <p class="page-sub">Set up your layers, keys and encoder, then save keymap.js for the macropad.</p>
+
+        <div class="section">
+            <h2>Open keymap</h2>
+            <div class="load-row">
+                <span class="drive" id="driveStatus" hidden><span class="dot"></span><span id="driveName">No drive folder</span></span>
+                <button id="connectBtn" onclick="connectDrive()" hidden>Connect folder…</button>
+                <button id="openDriveBtn" class="accent" onclick="openKeymapFromDrive()" hidden>Open from drive</button>
+                <button onclick="document.getElementById('fileInput').click()">Open file…</button>
+                <input type="file" id="fileInput" accept=".js,.json" hidden>
+            </div>
+            <small class="hint" id="fileHint">Opened from the CIRCUITPY drive, this page loads keymap.js from beside it automatically. Or start from scratch below, or open a keymap.js / keymap.json file. Version 1 files are converted automatically.</small>
+            <div id="loadReport"></div>
+        </div>
+
+        <div class="section">
+            <h2>Layers</h2>
+            <div class="layer-tabs" id="layerTabs"></div>
+            <div class="toolbar">
+                <button class="accent" onclick="addLayer()">+ Add layer</button>
+                <button onclick="duplicateLayer()" title="Add a copy of this layer after it">Duplicate layer</button>
+                <select id="templateSelect" onchange="addTemplate(this.value); this.value = '';">
+                    <option value="">+ Add layer from template…</option>
+                </select>
+                <button class="icon-btn" onclick="exportLayerFile()" data-tip="Export layer" aria-label="Export layer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 1-2z"/><path d="M8 3v5h7V3"/><rect x="7" y="13" width="10" height="7" rx="1"/></svg></button>
+                <button class="icon-btn" onclick="importLayerFile()" data-tip="Import layer" aria-label="Import layer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/><path d="M3 7v11a2 2 0 0 0 2 2h12.5a2 2 0 0 0 1.9-1.4L22 11H8.5a2 2 0 0 0-1.9 1.4L4 20"/></svg></button>
+                <button class="layer-json-btn" onclick="openLayerJson()" data-tip="View code" aria-label="View code">{ }</button>
+                <button class="icon-btn" id="previewBtn" onclick="togglePreview()" data-tip="Preview screen" aria-label="Preview screen"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+                <button class="danger icon-btn" onclick="deleteLayer()" data-tip="Delete layer" aria-label="Delete layer"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/></svg></button>
+            </div>
+            <div id="layerReport"></div>
+            <div id="layerContent"></div>
+        </div>
+
+        <div class="section" id="save">
+            <h2>Save keymap</h2>
+            <div id="issues" class="issues"></div>
+            <small class="hint">Save to drive puts keymap.js on the CIRCUITPY drive (start the macropad while holding the encoder so the drive appears and can be written). The macropad restarts by itself and uses it straight away. To copy it by hand, put keymap.js in the root of the drive. The text below is the plain JSON (what the copy button at its top right copies, and what Save as… writes for a .json name); keymap.js is the same JSON on one extra line.</small>
+            <div class="code-box">
+                <textarea id="jsonOutput" readonly></textarea>
+                <button class="icon-btn copy-btn" id="copyJsonBtn" onclick="copyKeymap()" data-tip="Copy JSON" aria-label="Copy JSON"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg></button>
+            </div>
+        </div>
+
+        <div class="savebar">
+            <span class="status" id="saveStatus"></span>
+            <button id="undoBtn" onclick="undo()" title="Undo (Ctrl+Z)" disabled>↶ Undo</button>
+            <button id="redoBtn" onclick="redo()" title="Redo (Ctrl+Y or Ctrl+Shift+Z)" disabled>↷ Redo</button>
+            <button onclick="printCheatSheet()" title="Print (or save as PDF) a one-page summary of every layer's keys and the encoder. Secret layers are left out.">🖨 Cheat sheet</button>
+            <button id="saveAsBtn" class="primary" onclick="saveKeymapAs()" title="keymap.js (or name it .json for plain JSON)">Save as…</button>
+            <button id="saveDriveBtn" class="primary" onclick="saveKeymapToDrive()" hidden>Save to drive</button>
+        </div>
+    </main>
+
+    <!-- Screen preview: floating panel, stays open while editing (togglePreview) -->
+    <div id="previewPanel" class="preview-panel" hidden>
+        <div class="preview-head">
+            <strong id="previewTitle">Screen preview</strong>
+            <button class="json-modal-close" onclick="togglePreview(false)" data-tip="Close" aria-label="Close preview">×</button>
+        </div>
+        <div class="oled" id="oledPreview"></div>
+        <small class="hint">As on the macropad's screen: icons cut to 4 characters, ERR on keys with a problem. Click a key to jump to it; drag one onto another to swap them. Stays up while you edit.</small>
+    </div>
+
+    <!-- Filled in by printCheatSheet(); only shown when printing -->
+    <div id="cheatSheet" class="cs"></div>
+
+    <!-- Macro recorder -->
+    <div id="recModal" class="json-modal">
+        <div class="json-modal-content rec-content">
+            <div class="json-modal-header">
+                <h3 id="recTitle">Record a macro</h3>
+            </div>
+            <div class="json-modal-body">
+                <div class="rec-status" id="recStatus"><span class="rec-dot"></span><span id="recStatusText"></span><span class="rec-time" id="recTime"></span></div>
+                <ol class="rec-steps" id="recSteps"></ol>
+                <div class="rec-row">
+                    <label>Pauses:</label>
+                    <span class="seg" id="recPauses">
+                        <button data-mode="none" onclick="setRecPauses('none')" title="No waiting between steps">None</button>
+                        <button data-mode="fixed" onclick="setRecPauses('fixed')" title="A short wait after each key or combo (gives the computer time to react)">After keys</button>
+                        <button data-mode="recorded" onclick="setRecPauses('recorded')" title="The pauses you made while recording">As recorded</button>
+                    </span>
+                    <span id="recFixedBox" class="rec-row"><input type="number" id="recFixed" min="0.01" max="2" step="0.01" value="0.05" oninput="recRedraw()"> s</span>
+                </div>
+                <small class="hint" id="recHint"></small>
+            </div>
+            <div class="json-modal-footer">
+                <span class="rec-footer-left">
+                    <button id="recStopBtn" onclick="recStopOrResume()">■ Stop</button>
+                    <button id="recUndoBtn" onclick="recUndoLast()" title="Remove the last step recorded">⌫ Last step</button>
+                </span>
+                <button onclick="recClose(false)">Discard</button>
+                <button class="primary" onclick="recClose(true)">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shared JSON modal -->
+    <div id="jsonModal" class="json-modal">
+        <div class="json-modal-content">
+            <div class="json-modal-header">
+                <h3 id="modalTitle">JSON Editor</h3>
+                <button class="json-modal-close" onclick="closeModal()">×</button>
+            </div>
+            <div class="json-modal-body">
+                <p id="modalHelp" class="hint"></p>
+                <textarea id="modalText" spellcheck="false"></textarea>
+                <div id="modalError" class="modal-error"></div>
+            </div>
+            <div class="json-modal-footer">
+                <span class="rec-footer-left"><button id="modalExtra" onclick="modalExtraClick()" hidden></button></span>
+                <button onclick="closeModal()">Cancel</button>
+                <button class="primary" id="modalApplyBtn" onclick="applyModal()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ════════════════════════════════════════════════════════════
+    // Constants (must match the firmware's keymap.py)
+    // ════════════════════════════════════════════════════════════
+    const NUM_KEYS = 8, MAX_ICON = 4, MAX_NAME = 10, MAX_LAYERS = 10;
+
+    const KEY_GROUPS = {
+        'Modifiers': ['CONTROL', 'SHIFT', 'ALT', 'GUI', 'WINDOWS', 'COMMAND',
+                      'LEFT_CONTROL', 'LEFT_SHIFT', 'LEFT_ALT', 'LEFT_GUI',
+                      'RIGHT_CONTROL', 'RIGHT_SHIFT', 'RIGHT_ALT', 'RIGHT_GUI'],
+        'Letters': 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
+        'Numbers': ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'ZERO'],
+        'Editing': ['ENTER', 'ESCAPE', 'BACKSPACE', 'TAB', 'SPACE', 'DELETE', 'INSERT', 'CAPS_LOCK'],
+        'Navigation': ['UP_ARROW', 'DOWN_ARROW', 'LEFT_ARROW', 'RIGHT_ARROW', 'HOME', 'END', 'PAGE_UP', 'PAGE_DOWN'],
+        'Symbols': ['MINUS', 'EQUALS', 'LEFT_BRACKET', 'RIGHT_BRACKET', 'BACKSLASH', 'SEMICOLON', 'QUOTE',
+                    'GRAVE_ACCENT', 'COMMA', 'PERIOD', 'FORWARD_SLASH'],
+        'Function': Array.from({length: 24}, (_, i) => 'F' + (i + 1)),
+        'System': ['PRINT_SCREEN', 'SCROLL_LOCK', 'PAUSE', 'APPLICATION'],
+        'Keypad': ['KEYPAD_NUMLOCK', 'KEYPAD_FORWARD_SLASH', 'KEYPAD_ASTERISK', 'KEYPAD_MINUS', 'KEYPAD_PLUS',
+                   'KEYPAD_ENTER', 'KEYPAD_ONE', 'KEYPAD_TWO', 'KEYPAD_THREE', 'KEYPAD_FOUR', 'KEYPAD_FIVE',
+                   'KEYPAD_SIX', 'KEYPAD_SEVEN', 'KEYPAD_EIGHT', 'KEYPAD_NINE', 'KEYPAD_ZERO', 'KEYPAD_PERIOD'],
+    };
+    const KEYCODES = Object.values(KEY_GROUPS).flat();
+
+    const MEDIA = {
+        PLAYPAUSE: 'Play / pause', NEXT: 'Next track', PREV: 'Previous track', STOP: 'Stop',
+        FAST_FORWARD: 'Fast forward', REWIND: 'Rewind', MUTE: 'Mute', VOL_UP: 'Volume up',
+        VOL_DN: 'Volume down', EJECT: 'Eject', BRIGHTNESS_UP: 'Brightness up', BRIGHTNESS_DOWN: 'Brightness down',
+    };
+    const MEDIA_ALIASES = {
+        PLAY_PAUSE: 'PLAYPAUSE', VOL_DOWN: 'VOL_DN', VOLUME_UP: 'VOL_UP', VOLUME_INCREMENT: 'VOL_UP',
+        VOLUME_DOWN: 'VOL_DN', VOLUME_DECREMENT: 'VOL_DN', PREVIOUS: 'PREV', SCAN_PREVIOUS_TRACK: 'PREV',
+        SCAN_NEXT_TRACK: 'NEXT',
+    };
+    const CLICKS = {left: 'Left button', right: 'Right button', middle: 'Middle button'};
+
+    // Layer lighting (must match lib/macropad/lights.py)
+    const LIGHT_SCENES = {   // name: [label, number of colours used]
+        static: ['Static', 1], breathing: ['Breathing', 2], reactive: ['Reactive (flash on key press)', 2],
+        pulse: ['Pulse', 1], twinkle: ['Twinkle', 1], lightning: ['Lightning', 1], strobe: ['Strobe', 1],
+        rainbow: ['Rainbow', 0], cycle: ['Colour cycle', 0], off: ['Off', 0],
+    };
+    const LIGHT_COLORS = {
+        RED: '#ff0000', VERMILION: '#ff5000', ORANGE: '#ff8c00', AMBER: '#ffc800', YELLOW: '#ffff00',
+        LIME: '#b4ff00', GREEN: '#00ff00', MINT: '#00ff64', CYAN: '#00ffff', SKY: '#00b4ff', BLUE: '#0000ff',
+        INDIGO: '#6400ff', PURPLE: '#b400ff', MAGENTA: '#ff00ff', PINK: '#ff64b4', ROSE: '#ff6464',
+        WHITE: '#ffffff', WARM_WHITE: '#ffb464',
+    };
+    const isHexColor = v => /^#[0-9a-fA-F]{6}$/.test(v || '');
+    const colorOk = v => v in LIGHT_COLORS || isHexColor(v);
+    const swatch = v => isHexColor(v) ? v : (LIGHT_COLORS[v] || '#000000');
+
+    const ACTION_TYPES = [
+        ['text', 'Type text'], ['key', 'Key'], ['combo', 'Key combo'], ['media', 'Media key'],
+        ['url', 'Open URL'], ['app', 'Run app'], ['scroll', 'Mouse scroll'], ['mouse', 'Mouse move'],
+        ['click', 'Mouse click'], ['sequence', 'Macro'], ['delay', 'Delay'],
+    ];
+    const ACTION_NAMES = ACTION_TYPES.map(t => t[0]);
+    // Actions a key can repeat while held (must match REPEATABLE in keymap.py). key / combo /
+    // click are held down while the key is, so the computer already repeats them.
+    const REPEATABLE = ['media', 'scroll', 'mouse', 'text', 'sequence'];
+
+    // Screen positions (must match lib/macropad/display.py): label x, y (y = text centre)
+    const OLED_KEY_POS = [[8, 26], [40, 26], [72, 26], [104, 26], [8, 50], [40, 50], [72, 50], [104, 50]];
+    const OLED_ENC_POS = [8, 8];
+
+    // Starter layers (keymap file format)
+    const TEMPLATES = {
+        media: {label: 'Media (volume keys repeat while held)', layer: {name: 'MEDIA', keys: [
+            {icon: 'PREV', media: 'PREV'}, {icon: 'PLAY', media: 'PLAYPAUSE'}, {icon: 'NEXT', media: 'NEXT'}, {icon: 'MUTE', media: 'MUTE'},
+            {icon: 'STOP', media: 'STOP'}, {icon: 'VOL-', media: 'VOL_DN', repeat: true}, {icon: 'VOL+', media: 'VOL_UP', repeat: true}, null],
+            encoder: {icon: 'VOL', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}}},
+        editing: {label: 'Editing (cut, copy, paste, undo…)', layer: {name: 'EDIT', keys: [
+            {icon: 'CUT', combo: ['CONTROL', 'X']}, {icon: 'COPY', combo: ['CONTROL', 'C']}, {icon: 'PSTE', combo: ['CONTROL', 'V']}, {icon: 'ALL', combo: ['CONTROL', 'A']},
+            {icon: 'UNDO', combo: ['CONTROL', 'Z']}, {icon: 'REDO', combo: ['CONTROL', 'Y']}, {icon: 'FIND', combo: ['CONTROL', 'F']}, {icon: 'SAVE', combo: ['CONTROL', 'S']}],
+            encoder: {icon: 'UNDO', cw: {combo: ['CONTROL', 'Y']}, ccw: {combo: ['CONTROL', 'Z']}}}},
+        navigation: {label: 'Navigation (arrows, home/end, page up/down)', layer: {name: 'NAV', keys: [
+            {icon: 'HOME', key: 'HOME'}, {icon: 'UP', key: 'UP_ARROW'}, {icon: 'END', key: 'END'}, {icon: 'PGUP', key: 'PAGE_UP'},
+            {icon: 'LEFT', key: 'LEFT_ARROW'}, {icon: 'DOWN', key: 'DOWN_ARROW'}, {icon: 'RGHT', key: 'RIGHT_ARROW'}, {icon: 'PGDN', key: 'PAGE_DOWN'}],
+            encoder: {icon: 'SCRL', cw: {scroll: -1}, ccw: {scroll: 1}, accel: true}}},
+        browser: {label: 'Browser (back, reload, tabs…)', layer: {name: 'BROWSER', keys: [
+            {icon: 'BACK', combo: ['ALT', 'LEFT_ARROW']}, {icon: 'FWD', combo: ['ALT', 'RIGHT_ARROW']}, {icon: 'RLD', key: 'F5'}, {icon: 'HOME', combo: ['ALT', 'HOME']},
+            {icon: 'NEW', combo: ['CONTROL', 'T']}, {icon: 'CLOS', combo: ['CONTROL', 'W']}, {icon: 'REOP', combo: ['CONTROL', 'SHIFT', 'T']}, {icon: 'FIND', combo: ['CONTROL', 'F']}],
+            encoder: {icon: 'TABS', cw: {combo: ['CONTROL', 'TAB']}, ccw: {combo: ['CONTROL', 'SHIFT', 'TAB']}}}},
+        windows: {label: 'Windows (snap, task view, screenshot…; encoder = virtual desktops)', layer: {name: 'WINDOWS', keys: [
+            {icon: 'SN L', combo: ['WINDOWS', 'LEFT_ARROW']}, {icon: 'MAX', combo: ['WINDOWS', 'UP_ARROW']}, {icon: 'SN R', combo: ['WINDOWS', 'RIGHT_ARROW']}, {icon: 'TASK', combo: ['WINDOWS', 'TAB']},
+            {icon: 'MIN', combo: ['WINDOWS', 'DOWN_ARROW']}, {icon: 'EXPL', combo: ['WINDOWS', 'E']}, {icon: 'SHOT', combo: ['WINDOWS', 'SHIFT', 'S']}, {icon: 'LOCK', combo: ['WINDOWS', 'L']}],
+            encoder: {icon: 'DESK', cw: {combo: ['CONTROL', 'WINDOWS', 'RIGHT_ARROW']}, ccw: {combo: ['CONTROL', 'WINDOWS', 'LEFT_ARROW']}}}},
+        presenter: {label: 'Presenter (start, slides, black / white screen; encoder = slides)', layer: {name: 'PRESENT', keys: [
+            {icon: 'STRT', key: 'F5'}, {icon: 'HERE', combo: ['SHIFT', 'F5']}, {icon: 'BLK', key: 'B'}, {icon: 'WHT', key: 'W'},
+            {icon: 'PREV', key: 'LEFT_ARROW'}, {icon: 'NEXT', key: 'RIGHT_ARROW'}, {icon: 'FRST', key: 'HOME'}, {icon: 'END', key: 'ESCAPE'}],
+            encoder: {icon: 'SLDE', cw: {key: 'RIGHT_ARROW'}, ccw: {key: 'LEFT_ARROW'}}}},
+        numpad: {label: 'Numpad operators (+ - * / 0 . ⌫ Enter)', layer: {name: 'NUMPAD', keys: [
+            {icon: '+', key: 'KEYPAD_PLUS'}, {icon: '-', key: 'KEYPAD_MINUS'}, {icon: '*', key: 'KEYPAD_ASTERISK'}, {icon: '/', key: 'KEYPAD_FORWARD_SLASH'},
+            {icon: '0', key: 'KEYPAD_ZERO'}, {icon: '.', key: 'KEYPAD_PERIOD'}, {icon: 'BKSP', key: 'BACKSPACE'}, {icon: 'ENT', key: 'KEYPAD_ENTER'}],
+            encoder: {icon: 'U/D', cw: {key: 'DOWN_ARROW'}, ccw: {key: 'UP_ARROW'}, accel: true}}},
+    };
+
+    const act = (type, value) => ({type, value});
+    const ENCODER_PRESETS = {
+        volume:     {label: 'Volume',                       icon: 'VOL',  accel: true,  cw: act('media', 'VOL_UP'), ccw: act('media', 'VOL_DN')},
+        scroll:     {label: 'Scroll (clockwise = down)',    icon: 'SCRL', accel: true,  cw: act('scroll', -1), ccw: act('scroll', 1)},
+        zoom:       {label: 'Zoom (Ctrl+= / Ctrl+-)',       icon: 'ZOOM', accel: false, cw: act('combo', ['CONTROL', 'EQUALS']), ccw: act('combo', ['CONTROL', 'MINUS'])},
+        tracks:     {label: 'Next / previous track',        icon: 'TRK',  accel: false, cw: act('media', 'NEXT'), ccw: act('media', 'PREV')},
+        tabs:       {label: 'Browser tabs',                 icon: 'TABS', accel: false, cw: act('combo', ['CONTROL', 'TAB']), ccw: act('combo', ['CONTROL', 'SHIFT', 'TAB'])},
+        undo:       {label: 'Redo / undo',                  icon: 'UNDO', accel: false, cw: act('combo', ['CONTROL', 'Y']), ccw: act('combo', ['CONTROL', 'Z'])},
+        arrows_lr:  {label: 'Right / left arrow keys',      icon: 'L/R',  accel: true,  cw: act('key', 'RIGHT_ARROW'), ccw: act('key', 'LEFT_ARROW')},
+        arrows_ud:  {label: 'Down / up arrow keys',         icon: 'U/D',  accel: true,  cw: act('key', 'DOWN_ARROW'), ccw: act('key', 'UP_ARROW')},
+        pages:      {label: 'Page down / page up',          icon: 'PAGE', accel: false, cw: act('key', 'PAGE_DOWN'), ccw: act('key', 'PAGE_UP')},
+        brightness: {label: 'Screen brightness',            icon: 'BRT',  accel: false, cw: act('media', 'BRIGHTNESS_UP'), ccw: act('media', 'BRIGHTNESS_DOWN')},
+        mouse_x:    {label: 'Move mouse right / left',      icon: 'MS X', accel: true,  cw: act('mouse', [5, 0]), ccw: act('mouse', [-5, 0])},
+        mouse_y:    {label: 'Move mouse down / up',         icon: 'MS Y', accel: true,  cw: act('mouse', [0, 5]), ccw: act('mouse', [0, -5])},
+    };
+
+    // ════════════════════════════════════════════════════════════
+    // Data model
+    //   layer   = {name, default, secret (0 / 1 / 2), keys: [key x8], encoder: {icon, cw, ccw, accel},
+    //              lights: {scene, color1, color2}}   (scene '' = no per-layer lights)
+    //   key     = {icon, action, repeat, confirm}   (repeat: fire again while held, REPEATABLE types
+    //              only; confirm: only fires after being held for CONFIRM T; never both)
+    //   action  = {type, value} or null; a sequence's value is [{a: action, n: repeat}]
+    // ════════════════════════════════════════════════════════════
+    let layers = [];
+    let current = 0;
+    let refs = [];          // action editors on screen: {get, set}
+
+    const clone = x => JSON.parse(JSON.stringify(x));
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+    function blankLayer(name) {
+        return {
+            name, default: false, secret: 0,
+            keys: Array.from({length: NUM_KEYS}, () => ({icon: '', action: null, repeat: false, confirm: false})),
+            encoder: {icon: '', cw: null, ccw: null, accel: false},
+            lights: {scene: '', color1: 'INDIGO', color2: 'VERMILION'},
+        };
+    }
+
+    function newAction(type) {
+        const defaults = {text: '', key: '', combo: [], media: '', url: '', app: '', scroll: -1,
+                          mouse: [5, 0], click: 'left', delay: 0.1, sequence: []};
+        return act(type, clone(defaults[type]));
+    }
+
+    function ensureRoles() {
+        layers.forEach(l => { if (l.default && l.secret) l.secret = 0; });
+        const seen = new Set();                         // one Secret 1 and one Secret 2
+        layers.forEach(l => { if (l.secret) { if (seen.has(l.secret)) l.secret = 0; seen.add(l.secret); } });
+        let def = layers.filter(l => l.default);
+        def.slice(1).forEach(l => l.default = false);
+        if (!def.length) {
+            const first = layers.find(l => !l.secret) || layers[0];
+            first.default = true;
+            first.secret = 0;
+        }
+    }
+
+    // ─── Convert between file JSON and the data model ───
+    function compressSteps(actions) {
+        const steps = [];
+        for (const a of actions) {
+            const last = steps[steps.length - 1];
+            if (last && JSON.stringify(last.a) === JSON.stringify(a)) last.n++;
+            else steps.push({a, n: 1});
+        }
+        return steps;
+    }
+
+    function toFileAction(a) {
+        if (!a) return null;
+        if (a.type === 'sequence') {
+            return {sequence: a.value.flatMap(s => Array.from({length: s.n}, () => toFileAction(s.a)))};
+        }
+        return {[a.type]: clone(a.value)};
+    }
+
+    function toFileKey(k) {
+        if (!k.icon && !k.action) return null;
+        const out = {};
+        if (k.icon) out.icon = k.icon;
+        Object.assign(out, toFileAction(k.action) || {});
+        if (k.confirm && k.action) out.confirm = true;
+        else if (k.repeat && k.action && REPEATABLE.includes(k.action.type)) out.repeat = true;
+        return out;
+    }
+
+    function toFile() {
+        return {
+            version: 2,
+            layers: layers.map(l => {
+                const out = {name: l.name};
+                if (l.default) out.default = true;
+                if (l.secret === 1) out.secret = true;
+                else if (l.secret === 2) out.secret = 2;
+                out.keys = l.keys.map(toFileKey);
+                const e = l.encoder;
+                if (e.icon || e.cw || e.ccw) {
+                    out.encoder = {};
+                    if (e.icon) out.encoder.icon = e.icon;
+                    if (e.cw) out.encoder.cw = toFileAction(e.cw);
+                    if (e.ccw) out.encoder.ccw = toFileAction(e.ccw);
+                    if (e.accel) out.encoder.accel = true;
+                }
+                const lt = l.lights;
+                if (lt.scene) {
+                    const uses = (LIGHT_SCENES[lt.scene] || ['', 2])[1];
+                    out.lights = {scene: lt.scene};
+                    if (uses >= 1) out.lights.color1 = lt.color1;
+                    if (uses >= 2) out.lights.color2 = lt.color2;
+                }
+                return out;
+            }),
+        };
+    }
+
+    // Reads one action object ({"text": "..."} etc). extra = fields to ignore (like "icon").
+    function fromFileAction(obj, where, notes, extra = []) {
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+            notes.push(`${where}: not an action object, skipped`);
+            return null;
+        }
+        const fields = Object.keys(obj).filter(f => !extra.includes(f));
+        if (!fields.length) return null;
+        if (fields.length > 1) notes.push(`${where}: has several actions (${fields.join(', ')}); kept ${fields[0]}`);
+        const type = fields[0];
+        if (!ACTION_NAMES.includes(type)) {
+            notes.push(`${where}: unknown action "${type}", skipped`);
+            return null;
+        }
+        let value = clone(obj[type]);
+        if (type === 'sequence') {
+            if (!Array.isArray(value)) { notes.push(`${where}: sequence is not a list, skipped`); return null; }
+            value = compressSteps(value.map((s, i) => fromFileAction(s, `${where} step ${i + 1}`, notes)).filter(Boolean));
+        } else if (type === 'media') {
+            value = normMedia(value);
+        }
+        return act(type, value);
+    }
+
+    function fromFileKey(obj, where, notes) {
+        if (obj === null || obj === undefined) return {icon: '', action: null, repeat: false, confirm: false};
+        if (typeof obj !== 'object' || Array.isArray(obj)) {
+            notes.push(`${where}: not a key object, cleared`);
+            return {icon: '', action: null, repeat: false, confirm: false};
+        }
+        const action = fromFileAction(obj, where, notes, ['icon', 'repeat', 'confirm']);
+        const confirmKey = obj.confirm === true && !!action;
+        if ('confirm' in obj && typeof obj.confirm !== 'boolean') notes.push(`${where}: "confirm" should be true or false; turned off`);
+        let repeat = obj.repeat === true;
+        if ('repeat' in obj && typeof obj.repeat !== 'boolean') notes.push(`${where}: "repeat" should be true or false; turned off`);
+        if (repeat && action && !REPEATABLE.includes(action.type)) {
+            notes.push(`${where}: "repeat" removed (a held ${action.type} already repeats, or it can't repeat)`);
+            repeat = false;
+        }
+        if (repeat && confirmKey) {
+            notes.push(`${where}: "repeat" removed (a hold-to-confirm key fires once)`);
+            repeat = false;
+        }
+        return {icon: String(obj.icon ?? ''), action, repeat, confirm: confirmKey};
+    }
+
+    function fromFile(data, notes) {
+        if (!data || data.version !== 2 || !Array.isArray(data.layers)) {
+            throw new Error('Not a version 2 keymap (needs "version": 2 and a "layers" list).');
+        }
+        const result = data.layers.map((ld, i) => {
+            const name = (ld && typeof ld.name === 'string' && ld.name) ? ld.name : `LAYER${i + 1}`;
+            const layer = blankLayer(name);
+            if (!ld || typeof ld !== 'object') { notes.push(`Layer ${i + 1}: not a layer object, replaced with an empty layer`); return layer; }
+            layer.default = ld.default === true;
+            layer.secret = ld.secret === true || ld.secret === 1 ? 1 : ld.secret === 2 ? 2 : 0;
+            if (!['undefined', 'boolean'].includes(typeof ld.secret) && ![0, 1, 2].includes(ld.secret))
+                notes.push(`${name}: "secret" should be true (Secret 1), 2 (Secret 2) or false; set to not secret`);
+            const keys = Array.isArray(ld.keys) ? ld.keys : [];
+            if (keys.length > NUM_KEYS) notes.push(`${name}: had ${keys.length} keys; only the first ${NUM_KEYS} kept`);
+            keys.slice(0, NUM_KEYS).forEach((k, j) => layer.keys[j] = fromFileKey(k, `${name} key ${j + 1}`, notes));
+            const enc = ld.encoder;
+            if (enc && typeof enc === 'object') {
+                layer.encoder.icon = String(enc.icon ?? '');
+                layer.encoder.accel = enc.accel === true;
+                if (enc.cw) layer.encoder.cw = fromFileAction(enc.cw, `${name} encoder cw`, notes);
+                if (enc.ccw) layer.encoder.ccw = fromFileAction(enc.ccw, `${name} encoder ccw`, notes);
+            }
+            const lt = ld.lights;
+            if (lt && typeof lt === 'object') {
+                layer.lights.scene = typeof lt.scene === 'string' ? lt.scene : 'static';
+                if (typeof lt.color1 === 'string') layer.lights.color1 = lt.color1;
+                if (typeof lt.color2 === 'string') layer.lights.color2 = lt.color2;
+                Object.keys(lt).filter(f => !['scene', 'color1', 'color2'].includes(f))
+                    .forEach(f => notes.push(`${name} lights: unknown field "${f}" dropped`));
+            }
+            return layer;
+        });
+        if (!result.length) throw new Error('The keymap has no layers.');
+        return result;
+    }
+
+    // ─── Version 1 conversion ───
+    function normMedia(name) {
+        const upper = String(name ?? '').toUpperCase();
+        return MEDIA_ALIASES[upper] || upper;
+    }
+
+    // Converts one v1 key/step (explicit {type, value} or legacy shorthand) to a v2 file action
+    function convertV1Action(raw, where, notes) {
+        if (raw === null || raw === undefined) return null;
+        if (Array.isArray(raw)) return {combo: raw};
+        if (typeof raw === 'string') {
+            if (/^https?:\/\//.test(raw)) return {url: raw};
+            if (raw.startsWith('win:')) return {app: raw.slice(4)};
+            if (MEDIA[normMedia(raw)]) return {media: normMedia(raw)};
+            if (KEYCODES.includes(raw.toUpperCase())) return {key: raw.toUpperCase()};
+            return {text: raw};
+        }
+        if (typeof raw === 'object' && 'type' in raw) {
+            const v = raw.value;
+            switch (raw.type) {
+                case 'string': return {text: v};
+                case 'key': return {key: v};
+                case 'combo': return {combo: v};
+                case 'url': return {url: v};
+                case 'app': return {app: typeof v === 'string' && v.startsWith('win:') ? v.slice(4) : v};
+                case 'cc': return {media: normMedia(v)};
+                case 'delay': return {delay: v};
+                case 'sequence':
+                    return {sequence: (Array.isArray(v) ? v : [])
+                        .map((s, i) => convertV1Action(s, `${where} step ${i + 1}`, notes)).filter(Boolean)};
+            }
+        }
+        // Already a v2 step?
+        if (typeof raw === 'object' && Object.keys(raw).some(f => ACTION_NAMES.includes(f))) return raw;
+        notes.push(`${where}: couldn't convert ${JSON.stringify(raw).slice(0, 60)}; left empty`);
+        return null;
+    }
+
+    function convertV1(d, notes) {
+        const names = d.layer_names || [];
+        const keymap = d.keymap || [];
+        const count = Math.max(names.length, keymap.length);
+        const out = {version: 2, layers: []};
+        for (let i = 0; i < count; i++) {
+            const name = names[i] || `LAYER${i + 1}`;
+            const layer = {name, keys: []};
+            if (i === d.default_layer) layer.default = true;
+            if (i === d.secret_layer && i !== d.default_layer) {
+                layer.secret = true;
+                notes.push(`"${name}" was the secret layer (now Secret 1). Version 1 always needed one; now it's optional, so set it to "Not secret" if you don't use it.`);
+            }
+            for (let k = 0; k < NUM_KEYS; k++) {
+                const where = `${name} key ${k + 1}`;
+                const action = convertV1Action((keymap[i] || [])[k], where, notes);
+                const icon = ((d.icons || [])[i] || [])[k] || '';
+                layer.keys.push(action || icon ? Object.assign(icon ? {icon} : {}, action || {}) : null);
+            }
+            const enc = {icon: (d.encoder_icons || [])[i] || ''};
+            const ea = (d.encoder_actions || [])[i];
+            if (ea && ea.cc) {
+                const media = normMedia(ea.cc);
+                if (media === 'VOL_UP' || media === 'VOL_DN') {
+                    Object.assign(enc, {cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true});
+                    notes.push(`${name} encoder: volume now goes up when turned clockwise (version 1 firmware turned it down). If it feels backwards, click "Swap directions".`);
+                } else {
+                    Object.assign(enc, {cw: {media}, ccw: {media}});
+                }
+            } else if (ea && ea.mouse_wheel) {
+                Object.assign(enc, {cw: {scroll: ea.mouse_wheel}, ccw: {scroll: -ea.mouse_wheel}, accel: true});
+            } else if (ea && ea.combo) {
+                Object.assign(enc, {cw: {combo: ea.combo}, ccw: {combo: ea.combo_ccw || ea.combo}});
+            }
+            layer.encoder = enc;
+            out.layers.push(layer);
+        }
+        return out;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Validation (mirrors the firmware's boot-time checks)
+    // ════════════════════════════════════════════════════════════
+    function checkAction(a, where, issues) {
+        const err = msg => issues.push({level: 'error', msg: `${where}: ${msg}`});
+        const v = a.value;
+        switch (a.type) {
+            case 'text': case 'url': case 'app':
+                if (!v) err({text: 'text to type', url: 'URL', app: 'app'}[a.type] + ' is empty'); break;
+            case 'key':
+                if (!KEYCODES.includes(v)) err(v ? `unknown key ${v}` : 'choose a key'); break;
+            case 'combo':
+                if (!v.length) err('choose the combo keys');
+                v.filter(k => !KEYCODES.includes(k)).forEach(k => err(`unknown key ${k}`));
+                if (v.length === 1) issues.push({level: 'warn', msg: `${where}: combo has only one key`});
+                break;
+            case 'media':
+                if (!MEDIA[v]) err(v ? `unknown media key ${v}` : 'choose a media key'); break;
+            case 'scroll':
+                if (!Number.isInteger(v) || v === 0) err('scroll amount should be a whole number, not 0'); break;
+            case 'mouse':
+                if (!Array.isArray(v) || !v.every(Number.isInteger)) err('mouse move should be whole numbers');
+                else if (!v[0] && !v[1]) err('mouse move is 0, 0');
+                break;
+            case 'click':
+                if (!CLICKS[v]) err('choose a mouse button'); break;
+            case 'delay':
+                if (!(typeof v === 'number' && v > 0)) err('delay should be above 0 seconds'); break;
+            case 'sequence':
+                if (!v.length) err('macro has no steps');
+                v.forEach((s, i) => {
+                    if (!s.a) err(`step ${i + 1} has no action`);
+                    else checkAction(s.a, `${where} step ${i + 1}`, issues);
+                });
+                break;
+        }
+    }
+
+    function validate() {
+        const issues = [];
+        const err = msg => issues.push({level: 'error', msg});
+        const warn = msg => issues.push({level: 'warn', msg});
+        const seen = new Set();
+        layers.forEach((l, i) => {
+            const name = l.name || `Layer ${i + 1}`;
+            if (!l.name) err(`Layer ${i + 1}: needs a name`);
+            else if (l.name.length > MAX_NAME) warn(`${name}: name is longer than ${MAX_NAME} characters and will be cut off on screen`);
+            if (seen.has(l.name)) err(`${name}: two layers have this name`);
+            seen.add(l.name);
+            if (l.default && l.secret) err(`${name}: can't be both the home layer and secret`);
+            l.keys.forEach((k, j) => {
+                if (k.icon.length > MAX_ICON) warn(`${name} key ${j + 1}: icon is longer than ${MAX_ICON} characters`);
+                if (k.action) checkAction(k.action, `${name} key ${j + 1}`, issues);
+            });
+            if (l.encoder.cw) checkAction(l.encoder.cw, `${name} encoder cw`, issues);
+            if (l.encoder.ccw) checkAction(l.encoder.ccw, `${name} encoder ccw`, issues);
+            const lt = l.lights;
+            if (lt.scene) {
+                if (!LIGHT_SCENES[lt.scene]) err(`${name} lights: unknown scene ${lt.scene}`);
+                const uses = (LIGHT_SCENES[lt.scene] || ['', 0])[1];
+                if (uses >= 1 && !colorOk(lt.color1)) err(`${name} lights: unknown colour ${lt.color1}`);
+                if (uses >= 2 && !colorOk(lt.color2)) err(`${name} lights: unknown colour ${lt.color2}`);
+            }
+        });
+        if (layers.filter(l => l.default).length !== 1) err('Exactly one layer must be the home layer');
+        if (layers.filter(l => l.secret === 1).length > 1) err('Only one layer can be Secret 1');
+        if (layers.filter(l => l.secret === 2).length > 1) err('Only one layer can be Secret 2');
+        if (layers.every(l => l.secret)) err('At least one layer must not be secret');
+        return issues;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Rendering
+    // ════════════════════════════════════════════════════════════
+    function ref(get, set) {
+        refs.push({get, set});
+        return refs.length - 1;
+    }
+
+    function keyOptions(selected, modifiersFirst = true) {
+        const groups = Object.entries(KEY_GROUPS);
+        if (!modifiersFirst) groups.push(groups.shift());
+        let html = '';
+        if (selected && !KEYCODES.includes(selected)) {
+            html += `<option value="${esc(selected)}" selected>${esc(selected)} (unknown)</option>`;
+        }
+        for (const [label, keys] of groups) {
+            html += `<optgroup label="${label}">` +
+                keys.map(k => `<option value="${k}" ${k === selected ? 'selected' : ''}>${k}</option>`).join('') +
+                '</optgroup>';
+        }
+        return html;
+    }
+
+    function selectOptions(map, selected, placeholder) {
+        let html = `<option value="">${placeholder}</option>`;
+        if (selected && !(selected in map)) html += `<option value="${esc(selected)}" selected>${esc(selected)} (unknown)</option>`;
+        return html + Object.entries(map).map(([k, label]) =>
+            `<option value="${k}" ${k === selected ? 'selected' : ''}>${esc(label)}</option>`).join('');
+    }
+
+    // Action editor: type dropdown + fields. ctx is 'key', 'encoder' or 'step'.
+    function actionEditor(id, ctx) {
+        const a = refs[id].get();
+        const type = a ? a.type : '';
+        const types = ACTION_TYPES.filter(([t]) => ctx === 'step' ? t !== 'sequence' : t !== 'delay');
+        let html = (ctx === 'step' ? '' : '<label>Action:</label>') +
+            `<select onchange="setType(${id}, this.value)">
+                <option value="">${ctx === 'step' ? 'Choose…' : 'None'}</option>
+                ${types.map(([t, label]) => `<option value="${t}" ${t === type ? 'selected' : ''}>${label}</option>`).join('')}
+            </select>`;
+        if (!a) return ctx === 'key' ? html + `<button class="macro-recorder-button rec-button" onclick="recordInto(${id}, true)" title="Record keystrokes into a macro for this key">● Record macro</button>` : html;
+        const v = a.value;
+        const held = ctx === 'key' ? '<small>Held down for as long as you hold the key.</small>' : '';
+        switch (type) {
+            case 'text':
+                html += `<textarea rows="2" placeholder="Text to type" oninput="setVal(${id}, this.value)">${esc(v)}</textarea>
+                         <small>A new line presses Enter.</small>`;
+                break;
+            case 'url':
+                html += `<input type="text" value="${esc(v)}" placeholder="https://example.com" oninput="setVal(${id}, this.value)">`;
+                break;
+            case 'app':
+                html += `<input type="text" value="${esc(v)}" placeholder="notepad.exe or C:\\Path\\app.exe" oninput="setVal(${id}, this.value)">
+                         <small>Typed into the Windows Run box (Win+R).</small>`;
+                break;
+            case 'key':
+                html += `<select onchange="setVal(${id}, this.value)"><option value="">Choose key…</option>${keyOptions(v, false)}</select>${held}`;
+                break;
+            case 'combo': {
+                const slots = v.length < 4 ? [...v, ''] : v;
+                html += '<div class="combo-key-selector">' + slots.map((k, i) =>
+                    `${i ? '+' : ''}<select onchange="setComboKey(${id}, ${i}, this.value)">
+                        <option value="">${i < v.length ? '(remove)' : (i ? 'add key…' : 'choose…')}</option>${keyOptions(k)}
+                    </select>`).join(' ') + `</div>${held}`;
+                break;
+            }
+            case 'media':
+                html += `<select onchange="setVal(${id}, this.value)">${selectOptions(MEDIA, v, 'Choose media key…')}</select>`;
+                break;
+            case 'scroll':
+                html += `<div class="inline"><input type="number" step="1" value="${esc(v)}" oninput="setVal(${id}, parseInt(this.value, 10))"></div>
+                         <small>Wheel clicks: positive scrolls up, negative scrolls down.</small>`;
+                break;
+            case 'mouse':
+                html += `<div class="inline">X <input type="number" step="1" value="${esc(v[0])}" oninput="setMouse(${id}, 0, this.value)">
+                         Y <input type="number" step="1" value="${esc(v[1])}" oninput="setMouse(${id}, 1, this.value)"></div>
+                         <small>Pixels: +X moves right, +Y moves down.</small>`;
+                break;
+            case 'click':
+                html += `<select onchange="setVal(${id}, this.value)">${selectOptions(CLICKS, v, 'Choose button…')}</select>${held}`;
+                break;
+            case 'delay':
+                html += `<div class="inline"><input type="number" min="0.01" max="10" step="0.05" value="${esc(v)}" oninput="setVal(${id}, parseFloat(this.value))"> seconds</div>`;
+                break;
+            case 'sequence':
+                html += sequenceEditor(id);
+                break;
+        }
+        return html;
+    }
+
+    function sequenceEditor(id) {
+        const steps = refs[id].get().value;
+        const rows = steps.map((s, i) => {
+            const stepId = ref(() => steps[i].a, val => steps[i].a = val);
+            return `
+                <div class="step-row">
+                    <div class="sequence-step-number">${i + 1}</div>
+                    <div class="step-body">${actionEditor(stepId, 'step')}</div>
+                    <div class="step-tools">
+                        <span title="Repeat this step">×<input type="number" min="1" max="100" value="${s.n}" onchange="setRepeat(${id}, ${i}, this.value)"></span>
+                        <button onclick="moveStep(${id}, ${i}, -1)" title="Move up">▲</button>
+                        <button onclick="moveStep(${id}, ${i}, 1)" title="Move down">▼</button>
+                        <button class="danger" onclick="removeStep(${id}, ${i})" title="Remove">✕</button>
+                    </div>
+                </div>`;
+        }).join('');
+        return `
+            <div class="sequence-builder">
+                ${rows || '<p class="hint">No steps yet.</p>'}
+                <button class="sequence-add-step" onclick="addStep(${id})">+ Add step</button>
+                <div class="inline" style="margin-top:8px;">
+                    <button class="macro-recorder-button rec-button" onclick="recordInto(${id})" title="${steps.length ? 'Record more steps onto the end' : 'Record keystrokes'}">● ${steps.length ? 'Record more' : 'Record'}</button>
+                    <button class="macro-recorder-button" onclick="pasteMacro(${id})" title="Steps as JSON, e.g. from another key or the old Macro Recorder page">Paste JSON</button>
+                </div>
+            </div>`;
+    }
+
+    function colorPicker(field, value) {
+        const custom = isHexColor(value);
+        return `
+            <div class="inline">
+                <span class="swatch" style="background:${swatch(value)}"></span>
+                <select onchange="setLightColor('${field}', this.value === 'custom' ? '${custom ? value : '#ff8800'}' : this.value)">
+                    ${Object.keys(LIGHT_COLORS).map(c => `<option value="${c}" ${c === value ? 'selected' : ''}>${c.replace('_', ' ')}</option>`).join('')}
+                    <option value="custom" ${custom ? 'selected' : ''}>Custom…</option>
+                </select>
+                ${custom ? `<input type="color" value="${value}" onchange="setLightColor('${field}', this.value.toUpperCase())">` : ''}
+            </div>`;
+    }
+
+    // The LED strip as the device's settings describe it (settings.js / default.js beside this
+    // page). Unknown (page opened elsewhere): the lights section is always shown.
+    let showLightsAnyway = false;
+    function stripSettings() {
+        let count = null, scene = null;
+        for (const name of ['MP1_DEFAULTS', 'MP1_SETTINGS']) {
+            const data = typeof window !== 'undefined' ? window[name] : undefined;
+            if (data && typeof data === 'object') {
+                if (typeof data.led_count === 'number') count = data.led_count;
+                if (typeof data.led_scene === 'string') scene = data.led_scene;
+            }
+        }
+        return {count, scene};
+    }
+    function lightsEditor(L) {
+        const lt = L.lights;
+        const strip = stripSettings();
+        if (strip.count === 0 && !showLightsAnyway) {
+            return `
+            <h3 class="sub">Lights</h3>
+            <p class="hint">Hidden: the macropad's settings say no LED strip is fitted (LED count 0).${lt.scene ? ` This layer's lights (${esc((LIGHT_SCENES[lt.scene] || [lt.scene])[0])}) are kept in the keymap.` : ''}
+                <button class="macro-recorder-button" onclick="showLightsAnyway = true; render();">Show anyway</button></p>`;
+        }
+        const uses = lt.scene ? (LIGHT_SCENES[lt.scene] || ['', 0])[1] : 0;
+        return `
+            <h3 class="sub">Lights</h3>
+            <div class="encoder-grid">
+                <div class="key-config">
+                    <label>Layer lighting:</label>
+                    <select onchange="setLightScene(this.value)">
+                        <option value="">None (use the macropad's LIGHTS settings)</option>
+                        ${Object.entries(LIGHT_SCENES).map(([k, [label]]) => `<option value="${k}" ${k === lt.scene ? 'selected' : ''}>${label}</option>`).join('')}
+                    </select>
+                    <small>For the optional LED strip. Pick a scene to replace the macropad's LIGHTS scene and colours while this layer is active; None uses the LIGHTS settings. Brightness and speed always come from the macropad.</small>
+                </div>
+                ${uses >= 1 ? `<div class="key-config"><label>${uses > 1 ? 'Colour 1 (base):' : 'Colour:'}</label>${colorPicker('color1', lt.color1)}</div>` : ''}
+                ${uses >= 2 ? `<div class="key-config"><label>Colour 2 (${lt.scene === 'reactive' ? 'key-press flash' : 'second colour'}):</label>${colorPicker('color2', lt.color2)}</div>` : ''}
+            </div>`;
+    }
+
+    function renderTabs() {
+        const arrow = (dir, show) => show
+            ? `<button class="tab-move" onclick="moveLayer(${dir})" data-tip="Move ${dir < 0 ? 'left' : 'right'}" aria-label="Move layer ${dir < 0 ? 'left' : 'right'}">${dir < 0 ? '◀' : '▶'}</button>` : '';
+        document.getElementById('layerTabs').innerHTML = layers.map((l, i) => `
+            ${i === current ? arrow(-1, i > 0) : ''}<div class="layer-tab ${i === current ? 'active' : ''}" onclick="switchLayer(${i})">
+                ${esc(l.name || `Layer ${i + 1}`)}${l.default ? '<span class="badge">★ home</span>' : ''}${l.secret ? `<span class="badge">secret ${l.secret}</span>` : ''}${layerChanged(l) ? '<span class="mod" title="Changed since the keymap was opened"></span>' : ''}
+            </div>${i === current ? arrow(1, i < layers.length - 1) : ''}`).join('');
+    }
+
+    function renderLayer() {
+        const L = layers[current];
+        let html = `
+            <div class="layer-props">
+                <div class="name-field">
+                    <label>Layer name (up to ${MAX_NAME} characters):</label>
+                    <input type="text" maxlength="${MAX_NAME}" value="${esc(L.name)}" oninput="setName(this.value)">
+                </div>
+                <div class="checkbox-inline" title="${L.default ? 'To change, tick Home layer on another layer' : ''}">
+                    <input type="checkbox" id="defaultCheck" ${L.default ? 'checked disabled' : ''} onchange="setDefault()">
+                    <label for="defaultCheck">Home layer (active at power-up)</label>
+                </div>
+                <div class="secret-field" title="${L.default ? "The home layer can't be secret" : 'Hidden from the Layers menu; opened with the TOG SEC 1 / TOG SEC 2 gestures; times out'}">
+                    <label for="secretSelect">Secret layer:</label>
+                    <select id="secretSelect" ${L.default ? 'disabled' : ''} onchange="setSecret(parseInt(this.value, 10))">
+                        <option value="0" ${!L.secret ? 'selected' : ''}>Not secret</option>
+                        <option value="1" ${L.secret === 1 ? 'selected' : ''}>Secret 1 (TOG SEC 1)</option>
+                        <option value="2" ${L.secret === 2 ? 'selected' : ''}>Secret 2 (TOG SEC 2)</option>
+                    </select>
+                </div>
+            </div>
+            ${lightsEditor(L)}
+            <h3 class="sub">Keys</h3>
+            <div class="key-grid">`;
+        L.keys.forEach((k, i) => {
+            const id = ref(() => L.keys[i].action, val => L.keys[i].action = val);
+            const canRepeat = k.action && REPEATABLE.includes(k.action.type);
+            html += `
+                <div class="key-config" id="key-card-${i}" ${dropAttrs(i)}>
+                    <span class="key-tools">
+                        <button onclick="exportKeyFile(${i})" data-tip="Export key" aria-label="Export key"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h11l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 1-2z"/><path d="M8 3v5h7V3"/><rect x="7" y="13" width="10" height="7" rx="1"/></svg></button>
+                        <button onclick="importKeyFile(${i})" data-tip="Import key" aria-label="Import key"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/><path d="M3 7v11a2 2 0 0 0 2 2h12.5a2 2 0 0 0 1.9-1.4L22 11H8.5a2 2 0 0 0-1.9 1.4L4 20"/></svg></button>
+                        <button class="json-btn" onclick="editKeyJson(${i})" data-tip="View code" aria-label="View code">{ }</button>
+                    </span>
+                    <h3 class="drag-handle" draggable="true" ondragstart="dragKey(event, ${i})" title="Drag onto another key to swap them">Key ${i + 1}</h3>
+                    <label>Icon (up to ${MAX_ICON}):</label>
+                    <input type="text" maxlength="${MAX_ICON}" value="${esc(k.icon)}" oninput="setIcon(${i}, this)">
+                    ${actionEditor(id, 'key')}
+                    ${k.action ? `<div class="checkbox-inline">
+                        <input type="checkbox" id="confirm${i}" ${k.confirm ? 'checked' : ''} onchange="setConfirm(${i}, this.checked)">
+                        <label for="confirm${i}">Hold to confirm</label>
+                    </div>
+                    ${k.confirm ? `<small>Fires once, as a quick press, only after the key is held for CONFIRM T (device VARIABLES menu); a bar fills on the screen. Let go early to cancel.</small>` : ''}` : ''}
+                    ${canRepeat && !k.confirm ? `<div class="checkbox-inline">
+                        <input type="checkbox" id="repeat${i}" ${k.repeat ? 'checked' : ''} onchange="layers[current].keys[${i}].repeat = this.checked; changed();">
+                        <label for="repeat${i}">Repeat while held</label>
+                    </div>
+                    <small>Delay and speed: RPT DELAY / RPT RATE in the device's VARIABLES menu.</small>` : ''}
+                </div>`;
+        });
+        const E = L.encoder;
+        const cw = ref(() => E.cw, val => E.cw = val);
+        const ccw = ref(() => E.ccw, val => E.ccw = val);
+        html += `</div>
+            <h3 class="sub">Encoder</h3>
+            <div class="encoder-grid">
+                <div class="key-config">
+                    <h3>Encoder</h3>
+                    <label>Icon (up to ${MAX_ICON}):</label>
+                    <input type="text" maxlength="${MAX_ICON}" value="${esc(E.icon)}" oninput="setEncIcon(this)">
+                    <label>Preset:</label>
+                    <select onchange="applyPreset(this.value)">
+                        <option value="">Apply a preset…</option>
+                        ${Object.entries(ENCODER_PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join('')}
+                    </select>
+                    <div class="checkbox-inline">
+                        <input type="checkbox" id="accelCheck" ${E.accel ? 'checked' : ''} onchange="layers[current].encoder.accel = this.checked; changed();">
+                        <label for="accelCheck">Speed up when turned fast</label>
+                    </div>
+                    <small>Repeats the action more times on fast spins (amounts set in the device's VARIABLES menu). Best for volume, scrolling and arrows; leave off for things like tabs or tracks.</small>
+                    <div class="inline" style="margin-top:8px;">
+                        <button class="macro-recorder-button" onclick="swapEncoder()">Swap directions</button>
+                        <button class="macro-recorder-button danger" onclick="clearEncoder()">Clear</button>
+                    </div>
+                </div>
+                <div class="key-config"><h3>Clockwise ↻</h3>${actionEditor(cw, 'encoder')}</div>
+                <div class="key-config"><h3>Counter-clockwise ↺</h3>${actionEditor(ccw, 'encoder')}</div>
+            </div>`;
+        return html;
+    }
+
+    function render() {
+        const y = window.scrollY;
+        refs = [];
+        current = Math.min(current, layers.length - 1);
+        renderTabs();
+        document.getElementById('layerContent').innerHTML = renderLayer();
+        window.scrollTo(0, y);
+        changed();
+    }
+
+    // Compact JSON: short objects/arrays stay on one line
+    function flat(v) {
+        if (Array.isArray(v)) return '[' + v.map(flat).join(', ') + ']';
+        if (v && typeof v === 'object') return '{' + Object.entries(v).map(([k, x]) => JSON.stringify(k) + ': ' + flat(x)).join(', ') + '}';
+        return JSON.stringify(v);
+    }
+    function pretty(v, indent = '') {
+        const one = flat(v);
+        if (!v || typeof v !== 'object' || one.length + indent.length <= 110) return one;
+        const next = indent + '  ';
+        if (Array.isArray(v)) return '[\n' + v.map(x => next + pretty(x, next)).join(',\n') + '\n' + indent + ']';
+        return '{\n' + Object.entries(v).map(([k, x]) => next + JSON.stringify(k) + ': ' + pretty(x, next)).join(',\n') + '\n' + indent + '}';
+    }
+
+    // ─── Changes since the keymap was opened (or last saved) ───
+    let baseline = {order: [], layers: new WeakMap()};
+    let dirty = false;
+    function layerSnapshot(l) {
+        const keep = layers;
+        layers = [l];
+        try { return JSON.stringify(toFile().layers[0]); } finally { layers = keep; }
+    }
+    const keySnapshot = k => JSON.stringify(toFileKey(k));
+    function setBaseline() {
+        baseline = {order: layers.slice(), layers: new WeakMap()};
+        layers.forEach(l => baseline.layers.set(l, {layer: layerSnapshot(l), keys: l.keys.map(keySnapshot)}));
+        changed();
+    }
+    function layerChanged(l) {
+        const b = baseline.layers.get(l);
+        return !b || b.layer !== layerSnapshot(l);
+    }
+    function keyChanged(l, i) {
+        const b = baseline.layers.get(l);
+        return !b || b.keys[i] !== keySnapshot(l.keys[i]);
+    }
+    function trackChanges() {
+        const changedLayers = layers.filter(layerChanged).length;
+        const removed = baseline.order.filter(l => !layers.includes(l)).length;
+        const reordered = layers.length === baseline.order.length && layers.some((l, i) => baseline.order[i] !== l);
+        dirty = !!(changedLayers || removed || reordered || layers.length !== baseline.order.length);
+        const L = layers[current];
+        if (L) L.keys.forEach((k, i) => {
+            const card = document.getElementById(`key-card-${i}`);
+            if (card && card.classList && card.classList.toggle) card.classList.toggle('changed', keyChanged(L, i));
+        });
+        renderTabs();
+        const parts = [];
+        if (changedLayers) parts.push(`${changedLayers} layer(s) changed`);
+        if (removed) parts.push(`${removed} removed`);
+        if (reordered) parts.push('reordered');
+        return dirty ? 'Unsaved: ' + parts.join(', ') : 'No unsaved changes';
+    }
+
+    function changed() {
+        renderPreview();
+        const unsaved = trackChanges();
+        document.getElementById('jsonOutput').value = pretty(toFile());
+        recordHistory();
+        const issues = validate();
+        const box = document.getElementById('issues');
+        const errorCount = issues.filter(i => i.level === 'error').length;
+        document.getElementById('saveStatus').innerHTML = (!issues.length
+            ? '<span class="issues-ok">✓ No problems found</span>'
+            : `<a href="#save" class="${errorCount ? 'issue-error' : 'issue-warn'}">${errorCount} error(s), ${issues.length - errorCount} warning(s)</a>`) +
+            ` <span class="hint" style="display:inline;margin-left:8px">${esc(unsaved)}</span>`;
+        if (!issues.length) {
+            box.innerHTML = '<span class="issues-ok">✓ No problems found</span>';
+        } else {
+            const errors = issues.filter(i => i.level === 'error').length;
+            box.innerHTML = `<strong>${errors} error(s), ${issues.length - errors} warning(s).</strong> The macropad will also list these on its screen at start-up.
+                <ul>${issues.map(i => `<li class="issue-${i.level}">${esc(i.msg)}</li>`).join('')}</ul>`;
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Edit handlers
+    // ════════════════════════════════════════════════════════════
+    function setType(id, type) { refs[id].set(type ? newAction(type) : null); render(); }
+    function setVal(id, value) { refs[id].get().value = value; changed(); }
+    function setMouse(id, i, value) { refs[id].get().value[i] = parseInt(value, 10) || 0; changed(); }
+    function setComboKey(id, slot, key) {
+        const combo = refs[id].get().value;
+        if (key) combo[slot] = key; else combo.splice(slot, 1);
+        render();
+    }
+    function addStep(id) { refs[id].get().value.push({a: newAction('key'), n: 1}); render(); }
+    function removeStep(id, i) { refs[id].get().value.splice(i, 1); render(); }
+    function moveStep(id, i, dir) {
+        const steps = refs[id].get().value, j = i + dir;
+        if (j < 0 || j >= steps.length) return;
+        [steps[i], steps[j]] = [steps[j], steps[i]];
+        render();
+    }
+    function setRepeat(id, i, value) {
+        refs[id].get().value[i].n = Math.min(100, Math.max(1, parseInt(value, 10) || 1));
+        changed();
+    }
+
+    function setConfirm(i, on) {
+        const k = layers[current].keys[i];
+        k.confirm = on;
+        if (on) k.repeat = false;           // a confirmed key fires once
+        render();
+    }
+
+    function setName(value) { layers[current].name = value; renderTabs(); changed(); }
+    function setIcon(i, input) { input.value = input.value.toUpperCase(); layers[current].keys[i].icon = input.value; changed(); }
+    function setEncIcon(input) { input.value = input.value.toUpperCase(); layers[current].encoder.icon = input.value; changed(); }
+
+    function setDefault() {
+        layers.forEach(l => l.default = false);
+        layers[current].default = true;
+        layers[current].secret = 0;
+        render();
+    }
+    // Secret 1 / Secret 2 each belong to one layer: picking it here takes it from any other layer
+    function setSecret(which) {
+        if (which) layers.forEach(l => { if (l.secret === which) l.secret = 0; });
+        layers[current].secret = which || 0;
+        render();
+    }
+
+    function setLightScene(scene) { layers[current].lights.scene = scene; render(); }
+    function setLightColor(field, value) { layers[current].lights[field] = value; render(); }
+
+    function applyPreset(key) {
+        const p = ENCODER_PRESETS[key];
+        if (!p) return;
+        layers[current].encoder = {icon: p.icon, cw: clone(p.cw), ccw: clone(p.ccw), accel: p.accel};
+        render();
+    }
+    function swapEncoder() {
+        const e = layers[current].encoder;
+        [e.cw, e.ccw] = [e.ccw, e.cw];
+        render();
+    }
+    function clearEncoder() {
+        layers[current].encoder = {icon: '', cw: null, ccw: null, accel: false};
+        render();
+    }
+
+    // ─── Screen preview ───
+    function hasError(a, where) {
+        if (!a) return false;
+        const issues = [];
+        checkAction(a, where, issues);
+        return issues.some(i => i.level === 'error');
+    }
+    function oledText(x, y, text, cls = '') {
+        // label x = left edge, y = vertical centre of a 12-pixel-tall text cell; 6 pixels per character
+        const chars = Array.from(text).map((c, i) => `<span class="ch" style="left:${i * 18}px">${esc(c)}</span>`).join('');
+        return `<span class="px ${cls}" data-text="${esc(text)}" style="left:${x * 3}px;top:${(y - 6) * 3}px">${chars}</span>`;
+    }
+    // Open / closed is remembered in this browser
+    function togglePreview(show) {
+        const panel = document.getElementById('previewPanel');
+        if (show === undefined) show = panel.hidden;
+        panel.hidden = !show;
+        const btn = document.getElementById('previewBtn');
+        if (btn && btn.classList) btn.classList.toggle('on', show);
+        try { localStorage.setItem('mp1-preview', show ? '1' : '0'); } catch (e) { /* private window: not remembered */ }
+        renderPreview();
+    }
+    function renderPreview() {
+        const box = document.getElementById('oledPreview');
+        if (!box) return;
+        const L = layers[current];
+        const title = document.getElementById('previewTitle');
+        if (title) title.textContent = `Screen preview: ${L.name || 'layer ' + (current + 1)}`;
+        const E = L.encoder;
+        const encErr = hasError(E.cw, 'cw') || hasError(E.ccw, 'ccw');
+        let html = oledText(OLED_ENC_POS[0], OLED_ENC_POS[1], encErr ? 'ERR' : E.icon.slice(0, MAX_ICON), encErr ? 'err' : '');
+        L.keys.forEach((k, i) => {
+            const [x, y] = OLED_KEY_POS[i];
+            const err = hasError(k.action, 'key');
+            html += oledText(x, y, err ? 'ERR' : k.icon.slice(0, MAX_ICON), err ? 'err' : '');
+            html += `<div class="tile" style="left:${(x - 4) * 3}px;top:${(y - 11) * 3}px" draggable="true"
+                         ondragstart="dragKey(event, ${i})" ${dropAttrs(i)} onclick="jumpToKey(${i})"
+                         title="Key ${i + 1}${k.action ? '' : ' (no action)'}"></div>`;
+        });
+        box.innerHTML = html;
+    }
+    function jumpToKey(i) {
+        const card = document.getElementById(`key-card-${i}`);
+        if (card && card.scrollIntoView) card.scrollIntoView({behavior: 'smooth', block: 'center'});
+    }
+
+    // ─── Drag one key onto another to swap them ───
+    function dropAttrs(i) {
+        return `ondragover="event.preventDefault()" ondragenter="this.classList.add('drag-over')"
+                ondragleave="this.classList.remove('drag-over')" ondrop="dropKey(event, ${i})"`;
+    }
+    function dragKey(e, i) {
+        e.dataTransfer.setData('text/plain', String(i));
+        e.dataTransfer.effectAllowed = 'move';
+    }
+    function dropKey(e, j) {
+        e.preventDefault();
+        const i = parseInt(e.dataTransfer.getData('text/plain'), 10);
+        swapKeys(i, j);
+    }
+    function swapKeys(i, j) {
+        const K = layers[current].keys;
+        if (!(i >= 0 && i < NUM_KEYS) || !(j >= 0 && j < NUM_KEYS) || i === j) { render(); return; }
+        [K[i], K[j]] = [K[j], K[i]];
+        render();
+    }
+
+    // ─── Duplicate / templates ───
+    function uniqueName(base) {
+        base = (base || 'LAYER').replace(/\d+$/, '') || 'LAYER';
+        if (!layers.some(l => l.name === base)) return base.slice(0, MAX_NAME);
+        for (let n = 2; ; n++) {
+            const name = base.slice(0, MAX_NAME - String(n).length) + n;
+            if (!layers.some(l => l.name === name)) return name;
+        }
+    }
+    function duplicateLayer() {
+        if (layers.length >= MAX_LAYERS) return alert(`The configurator supports up to ${MAX_LAYERS} layers.`);
+        const copy = clone(layers[current]);
+        copy.default = false;
+        copy.secret = 0;
+        copy.name = uniqueName(layers[current].name);
+        layers.splice(current + 1, 0, copy);
+        current++;
+        render();
+    }
+    function addTemplate(key) {
+        const t = TEMPLATES[key];
+        if (!t) return;
+        if (layers.length >= MAX_LAYERS) return alert(`The configurator supports up to ${MAX_LAYERS} layers.`);
+        const layer = fromFile({version: 2, layers: [clone(t.layer)]}, [])[0];
+        layer.name = uniqueName(t.layer.name);
+        layers.push(layer);
+        current = layers.length - 1;
+        render();
+    }
+
+    function switchLayer(i) { current = i; render(); }
+    function addLayer() {
+        if (layers.length >= MAX_LAYERS) return alert(`The configurator supports up to ${MAX_LAYERS} layers.`);
+        let n = layers.length + 1;
+        while (layers.some(l => l.name === `LAYER${n}`)) n++;
+        layers.push(blankLayer(`LAYER${n}`));
+        current = layers.length - 1;
+        render();
+    }
+    function deleteLayer() {
+        if (layers.length === 1) return alert('A keymap needs at least one layer.');
+        if (!confirm(`Delete layer "${layers[current].name}"?`)) return;
+        layers.splice(current, 1);
+        ensureRoles();
+        render();
+    }
+    function moveLayer(dir) {
+        const j = current + dir;
+        if (j < 0 || j >= layers.length) return;
+        [layers[current], layers[j]] = [layers[j], layers[current]];
+        current = j;
+        render();
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Macro recorder: records keystrokes straight into a sequence.
+    //   Raw key presses are kept; the steps are worked out from them (recSteps) whenever
+    //   something changes, so the Pauses choice can be changed after recording.
+    // ════════════════════════════════════════════════════════════
+    const CODE_KEYS = {         // KeyboardEvent.code -> keycode name (see KEY_GROUPS)
+        Enter: 'ENTER', NumpadEnter: 'KEYPAD_ENTER', Escape: 'ESCAPE', Backspace: 'BACKSPACE', Tab: 'TAB', Space: 'SPACE',
+        Minus: 'MINUS', Equal: 'EQUALS', BracketLeft: 'LEFT_BRACKET', BracketRight: 'RIGHT_BRACKET', Backslash: 'BACKSLASH',
+        Semicolon: 'SEMICOLON', Quote: 'QUOTE', Backquote: 'GRAVE_ACCENT', Comma: 'COMMA', Period: 'PERIOD', Slash: 'FORWARD_SLASH',
+        CapsLock: 'CAPS_LOCK', PrintScreen: 'PRINT_SCREEN', ScrollLock: 'SCROLL_LOCK', Pause: 'PAUSE', Insert: 'INSERT',
+        Home: 'HOME', PageUp: 'PAGE_UP', Delete: 'DELETE', End: 'END', PageDown: 'PAGE_DOWN', ArrowUp: 'UP_ARROW',
+        ArrowDown: 'DOWN_ARROW', ArrowLeft: 'LEFT_ARROW', ArrowRight: 'RIGHT_ARROW', ContextMenu: 'APPLICATION',
+        NumLock: 'KEYPAD_NUMLOCK', NumpadDivide: 'KEYPAD_FORWARD_SLASH', NumpadMultiply: 'KEYPAD_ASTERISK',
+        NumpadSubtract: 'KEYPAD_MINUS', NumpadAdd: 'KEYPAD_PLUS', NumpadDecimal: 'KEYPAD_PERIOD',
+        ControlLeft: 'CONTROL', ControlRight: 'CONTROL', ShiftLeft: 'SHIFT', ShiftRight: 'SHIFT',
+        AltLeft: 'ALT', AltRight: 'ALT', MetaLeft: 'WINDOWS', MetaRight: 'WINDOWS', OSLeft: 'WINDOWS', OSRight: 'WINDOWS',
+    };
+    const DIGITS = ['ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+    const MOD_ORDER = ['CONTROL', 'SHIFT', 'ALT', 'WINDOWS'];
+    const REC_MIN_PAUSE = 0.25;         // As recorded: shorter gaps are just typing speed
+    const REC_MAX_PAUSE = 10;
+    function codeKey(code) {
+        if (CODE_KEYS[code]) return CODE_KEYS[code];
+        let m;
+        if ((m = /^Key([A-Z])$/.exec(code))) return m[1];
+        if ((m = /^Digit(\d)$/.exec(code))) return DIGITS[+m[1]];
+        if ((m = /^Numpad(\d)$/.exec(code))) return 'KEYPAD_' + DIGITS[+m[1]];
+        if ((m = /^F(\d{1,2})$/.exec(code)) && +m[1] <= 24) return code;
+        return null;
+    }
+
+    // Raw presses -> sequence steps [{a, n}]. presses: [{t (ms), key, char, mods: [..]}] or {brk: true}
+    function recSteps(presses, mode, fixed) {
+        const out = [];
+        let text = null, last = null;
+        const push = a => { text = null; out.push(a); };
+        for (const p of presses) {
+            if (p.brk) { last = null; continue; }
+            const gap = last === null ? 0 : (p.t - last) / 1000;
+            last = p.t;
+            if (mode === 'recorded' && out.length && gap >= REC_MIN_PAUSE)
+                push(act('delay', Math.min(REC_MAX_PAUSE, Math.round(gap * 20) / 20)));
+            if (p.char !== null && p.char !== undefined) {           // typing
+                if (text) text.value += p.char;
+                else { text = act('text', p.char); out.push(text); }
+                continue;
+            }
+            push(p.mods.length ? act('combo', [...p.mods, p.key]) : act('key', p.key));
+            if (mode === 'fixed' && fixed > 0) push(act('delay', fixed));
+            text = null;
+        }
+        while (out.length && out[out.length - 1].type === 'delay') out.pop();   // nothing to wait for at the end
+        return compressSteps(out);
+    }
+
+    const rec = {open: false, live: false, presses: [], down: new Map(), escAt: null, escTimer: null,
+                 target: null, ref: null, before: 0, mode: 'fixed', started: 0, clock: null, fromEmpty: false};
+
+    // Key event while the recorder is open (window, capture phase: the page's shortcuts don't see it)
+    function recKey(e) {
+        if (!rec.open) return;
+        if (e.target && e.target.id === 'recFixed') return;          // typing a pause length
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (!rec.live) return;
+        const key = codeKey(e.code);
+        if (e.type === 'keyup') {
+            if (e.code === 'Escape' && rec.escTimer) { clearTimeout(rec.escTimer); rec.escTimer = null; }
+            const held = rec.down.get(e.code);
+            rec.down.delete(e.code);
+            // a modifier pressed and let go on its own (e.g. just Ctrl): record it as a key
+            if (held && held.mod && !held.used) rec.presses.push({t: held.t, key, char: null, mods: []});
+            recRedraw();
+            return;
+        }
+        if (e.repeat || rec.down.has(e.code)) return;               // held down: one press
+        const now = Date.now();
+        if (!key) { recHint(`"${e.key}" can't be sent by the macropad, so it was skipped.`); return; }
+        if (MOD_ORDER.includes(key)) { rec.down.set(e.code, {t: now, mod: true, used: false}); return; }
+        rec.down.set(e.code, {t: now, mod: false});
+        rec.down.forEach(h => { if (h.mod) h.used = true; });
+        if (e.code === 'Escape') {                                   // hold Esc for 1 s to stop
+            rec.escTimer = setTimeout(() => {
+                rec.escTimer = null;
+                rec.presses.pop();                                   // the Esc that stopped it
+                recStop();
+            }, 1000);
+        }
+        const mods = MOD_ORDER.filter(m => ({CONTROL: e.ctrlKey, SHIFT: e.shiftKey, ALT: e.altKey, WINDOWS: e.metaKey})[m]);
+        const printable = e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey;      // Shift is part of the character
+        rec.presses.push(printable ? {t: now, key, char: e.key, mods: []} : {t: now, key, char: null, mods});
+        recRedraw();
+    }
+
+    function recordInto(id, makeSequence = false) {
+        const r = refs[id];
+        if (!r) return;
+        if (makeSequence) r.set(newAction('sequence'));     // shown after Done (one undo step)
+        const a = r.get();
+        if (!a || a.type !== 'sequence') return;
+        rec.ref = r;
+        rec.target = a.value;
+        rec.fromEmpty = makeSequence;
+        rec.before = rec.target.length;
+        rec.presses = [];
+        rec.open = true;
+        document.getElementById('recTitle').textContent = makeSequence || !rec.before ? 'Record a macro' : `Record more (added after step ${rec.before})`;
+        document.getElementById('recModal').classList.add('active');
+        recStart();
+    }
+    function recStart() {
+        if (rec.presses.length) rec.presses.push({brk: true});      // a stop doesn't count as a pause
+        rec.live = true;
+        rec.down.clear();
+        rec.started = Date.now();
+        clearInterval(rec.clock);
+        rec.clock = setInterval(recTick, 250);
+        if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        recHint();
+        recRedraw();
+    }
+    function recStop(message) {
+        rec.live = false;
+        clearInterval(rec.clock);
+        if (rec.escTimer) { clearTimeout(rec.escTimer); rec.escTimer = null; }
+        recHint(message);
+        recRedraw();
+    }
+    function recStopOrResume() { if (rec.live) recStop(); else recStart(); }
+    function recUndoLast() {
+        // remove the presses that made the last step
+        const steps = recSteps(rec.presses, 'none', 0);
+        if (!steps.length) return;
+        const keep = steps.slice(0, -1).reduce((n, s) => n + (s.a.type === 'text' ? s.a.value.length * s.n : s.n), 0);
+        let count = 0, cut = 0;
+        for (; cut < rec.presses.length && count < keep; cut++) if (!rec.presses[cut].brk) count++;
+        rec.presses = rec.presses.slice(0, cut);
+        recRedraw();
+    }
+    function setRecPauses(mode) { rec.mode = mode; recRedraw(); }
+    function recFixed() { const v = parseFloat(document.getElementById('recFixed').value); return v > 0 ? Math.min(2, v) : 0.05; }
+    function recTick() {
+        const s = Math.floor((Date.now() - rec.started) / 1000);
+        document.getElementById('recTime').textContent = rec.live ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : '';
+    }
+    function recHint(extra) {
+        document.getElementById('recHint').textContent = (extra ? extra + ' ' : '') +
+            'Windows and the browser keep some keys to themselves (the Windows key, Alt+Tab, Ctrl+W / T / N, Ctrl+Alt+Del…): add those afterwards with + Add step → Key combo.';
+    }
+    function recRedraw() {
+        const steps = recSteps(rec.presses, rec.mode, recFixed());
+        const old = rec.target ? rec.target.slice(0, rec.before) : [];
+        const row = (s, i, cls) => `<li class="${cls}${s.a.type === 'delay' ? ' wait' : ''}"><span class="n">${i + 1}</span>${esc(describeAction(s.a))}${s.n > 1 ? `<span class="x">×${s.n}</span>` : ''}</li>`;
+        const shownOld = old.length > 3 ? old.slice(-3) : old;
+        document.getElementById('recSteps').innerHTML =
+            (old.length > 3 ? `<li class="old"><span class="n"></span>… ${old.length - 3} earlier step(s)</li>` : '') +
+            shownOld.map((s, i) => row(s, old.length - shownOld.length + i, 'old')).join('') +
+            (steps.length ? steps.map((s, i) => row(s, old.length + i, '')).join('')
+                          : `<li class="empty">${rec.live ? 'Start typing: each key you press shows up here.' : 'Nothing recorded.'}</li>`);
+        const list = document.getElementById('recSteps');
+        if (list.scrollHeight) list.scrollTop = list.scrollHeight;
+        const status = document.getElementById('recStatus');
+        status.classList.toggle('live', rec.live);
+        document.getElementById('recStatusText').textContent = rec.live
+            ? 'Recording: type the macro now. Hold Esc for 1 second (or press Stop) to stop.'
+            : 'Stopped. Press Record to carry on, or Done to keep it.';
+        document.getElementById('recStopBtn').textContent = rec.live ? '■ Stop' : '● Record';
+        document.getElementById('recUndoBtn').disabled = !steps.length;
+        document.querySelectorAll('#recPauses button').forEach(b => b.classList.toggle('on', b.dataset.mode === rec.mode));
+        document.getElementById('recFixedBox').hidden = rec.mode !== 'fixed';
+        recTick();
+    }
+    function recClose(keep) {
+        recStop();
+        rec.open = false;
+        document.getElementById('recModal').classList.remove('active');
+        const steps = recSteps(rec.presses, rec.mode, recFixed());
+        if (keep && steps.length) {
+            rec.target.push(...steps);
+        } else if (rec.fromEmpty && !rec.target.length) {
+            // "Record macro" on an empty key, then nothing kept: back to no action
+            rec.ref.set(null);
+        }
+        rec.target = null;
+        rec.presses = [];
+        render();                                   // one undo step for the whole recording
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Undo / redo
+    //   A step = the layer objects in order + each one's contents (as JSON). Restoring puts the
+    //   contents back into the same objects, so "changed since opened" keeps working. Typing in
+    //   one box is one step until you pause (UNDO_MERGE_MS) or move to another box.
+    // ════════════════════════════════════════════════════════════
+    const UNDO_LIMIT = 200, UNDO_MERGE_MS = 1200;
+    const undoHistory = {undo: [], redo: [], last: null, typing: null, at: 0};
+    function snapshot() { return {order: layers.slice(), data: layers.map(l => JSON.stringify(l)), current}; }
+    function sameSnapshot(a, b) {
+        return a.order.length === b.order.length && a.order.every((l, i) => l === b.order[i] && a.data[i] === b.data[i]);
+    }
+    function resetHistory() {
+        undoHistory.undo = []; undoHistory.redo = []; undoHistory.last = snapshot(); undoHistory.typing = null;
+        updateHistoryButtons();
+    }
+    function recordHistory() {
+        if (!undoHistory.last) return;
+        const now = snapshot();
+        if (sameSnapshot(now, undoHistory.last)) return;      // e.g. just switched tabs
+        const ev = typeof window !== 'undefined' ? window.event : null;
+        const typing = ev && ev.type === 'input' ? ev.target : null;
+        const t = Date.now();
+        if (!(typing && typing === undoHistory.typing && t - undoHistory.at < UNDO_MERGE_MS && undoHistory.undo.length)) {
+            undoHistory.undo.push(undoHistory.last);
+            if (undoHistory.undo.length > UNDO_LIMIT) undoHistory.undo.shift();
+        }
+        undoHistory.typing = typing;
+        undoHistory.at = t;
+        undoHistory.redo = [];
+        undoHistory.last = now;
+        updateHistoryButtons();
+    }
+    function restoreSnapshot(snap, focus) {
+        layers = snap.order.slice();
+        snap.order.forEach((l, i) => {
+            const data = JSON.parse(snap.data[i]);
+            Object.keys(l).forEach(k => delete l[k]);
+            Object.assign(l, data);
+        });
+        const at = layers.indexOf(focus);
+        current = at >= 0 ? at : Math.min(snap.current, layers.length - 1);
+        undoHistory.last = snap;                 // keeps the layer that was being edited then
+        undoHistory.typing = null;
+        render();
+        updateHistoryButtons();
+    }
+    function undo() {
+        if (!undoHistory.undo.length) return;
+        const from = undoHistory.last;
+        undoHistory.redo.push(from);
+        restoreSnapshot(undoHistory.undo.pop(), from.order[from.current]);   // show the layer that changed
+    }
+    function redo() {
+        if (!undoHistory.redo.length) return;
+        undoHistory.undo.push(undoHistory.last);
+        const to = undoHistory.redo.pop();
+        restoreSnapshot(to, to.order[to.current]);
+    }
+    function updateHistoryButtons() {
+        const u = document.getElementById('undoBtn'), r = document.getElementById('redoBtn');
+        if (u) { u.disabled = !undoHistory.undo.length; u.title = `Undo (Ctrl+Z)${undoHistory.undo.length ? ` · ${undoHistory.undo.length} step(s)` : ''}`; }
+        if (r) { r.disabled = !undoHistory.redo.length; r.title = `Redo (Ctrl+Y or Ctrl+Shift+Z)${undoHistory.redo.length ? ` · ${undoHistory.redo.length} step(s)` : ''}`; }
+    }
+    function isTextField(el) {
+        if (!el || !el.tagName) return false;
+        const tag = el.tagName.toUpperCase();
+        if (tag === 'TEXTAREA') return !el.readOnly;
+        if (tag !== 'INPUT') return !!el.isContentEditable;
+        return ['text', 'number', 'search', 'url', ''].includes((el.type || '').toLowerCase());
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Printable cheat sheet: every regular layer's keys and encoder, plus the encoder button's
+    // gestures (from settings.js beside this page, if it's there). Secret layers, the gestures
+    // that open them, and long typed text are left out: it's meant to sit on a desk.
+    // ════════════════════════════════════════════════════════════
+    const GESTURE_DEFAULTS = {     // must match lib/macropad/settings.py
+        gesture_double: 'layer_keys', gesture_triple: 'timer', gesture_hold_cw: 'jiggle',
+        gesture_hold_ccw: 'secret', gesture_click_hold_cw: 'stopwatch', gesture_click_hold_ccw: 'none',
+        long_press_duration: 1.5,
+    };
+    const GESTURE_ROWS = [
+        ['gesture_double', 'Double click'], ['gesture_triple', 'Triple click'],
+        ['gesture_hold_cw', 'Hold + turn ↻'], ['gesture_hold_ccw', 'Hold + turn ↺'],
+        ['gesture_click_hold_cw', 'Click, then hold + turn ↻'], ['gesture_click_hold_ccw', 'Click, then hold + turn ↺'],
+    ];
+    const GESTURE_LABELS = {   // lib/macropad/gestures.py; secret / secret2 are never printed
+        home_layer: 'Home layer', layer_keys: 'Layer keys: jump to a layer by key', settings: 'Settings menu',
+        timer: 'Timer', timer_toggle: 'Start / pause the timer', stopwatch: 'Stopwatch', sw_toggle: 'Start / pause the stopwatch',
+        mute: 'Mute', play_pause: 'Play / pause', panic: 'Panic! (pause, minimize all, mute)', jiggle: 'Mouse jiggle on / off',
+        lock: 'Lock / unlock the keys', lights: 'Lights on / off', sound: 'Sound on / off', show_layer: 'Show the layer name',
+    };
+    const KEY_WORDS = {
+        CONTROL: 'Ctrl', LEFT_CONTROL: 'Ctrl', RIGHT_CONTROL: 'Right Ctrl', SHIFT: 'Shift', LEFT_SHIFT: 'Shift',
+        RIGHT_SHIFT: 'Right Shift', ALT: 'Alt', LEFT_ALT: 'Alt', RIGHT_ALT: 'AltGr', GUI: 'Win', LEFT_GUI: 'Win',
+        RIGHT_GUI: 'Right Win', WINDOWS: 'Win', COMMAND: 'Cmd', UP_ARROW: '↑', DOWN_ARROW: '↓', LEFT_ARROW: '←',
+        RIGHT_ARROW: '→', ESCAPE: 'Esc', PAGE_UP: 'Page Up', PAGE_DOWN: 'Page Down', DELETE: 'Del', INSERT: 'Ins',
+        PRINT_SCREEN: 'PrtSc', GRAVE_ACCENT: '`', MINUS: '-', EQUALS: '=', LEFT_BRACKET: '[', RIGHT_BRACKET: ']',
+        BACKSLASH: '\\', SEMICOLON: ';', QUOTE: "'", COMMA: ',', PERIOD: '.', FORWARD_SLASH: '/',
+        ONE: '1', TWO: '2', THREE: '3', FOUR: '4', FIVE: '5', SIX: '6', SEVEN: '7', EIGHT: '8', NINE: '9', ZERO: '0',
+    };
+    function keyWord(k) {
+        if (KEY_WORDS[k]) return KEY_WORDS[k];
+        if (k.startsWith('KEYPAD_')) return 'Num ' + keyWord(k.slice(7));
+        if (/^(F\d+|.)$/.test(k)) return k;                         // A, F5, F12
+        return k.toLowerCase().replace(/_/g, ' ').replace(/^\w/, c => c.toUpperCase());
+    }
+    const cut = (t, n) => (t.length > n ? t.slice(0, n - 1) + '…' : t);
+    function describeAction(a) {
+        if (!a) return '';
+        const v = a.value;
+        switch (a.type) {
+            case 'text': return `Types "${cut(String(v).replace(/\n/g, '⏎'), 22)}"`;
+            case 'key': return keyWord(v || '?');
+            case 'combo': return v.map(keyWord).join(' + ');
+            case 'media': return MEDIA[v] || v;
+            case 'url': { let host = v; try { host = new URL(v).host || v; } catch (e) { /* not a full URL */ } return 'Opens ' + cut(host, 26); }
+            case 'app': return 'Runs ' + cut(String(v).split(/[\\/]/).pop(), 24);
+            case 'scroll': return v > 0 ? `Scroll up ${v}` : `Scroll down ${-v}`;
+            case 'mouse': return `Mouse ${v[0] >= 0 ? '+' : ''}${v[0]}, ${v[1] >= 0 ? '+' : ''}${v[1]}`;
+            case 'click': return CLICKS[v] || v;
+            case 'delay': return `Wait ${v} s`;
+            case 'sequence': return `Macro (${v.reduce((n, s) => n + s.n, 0)} steps)`;
+        }
+        return a.type;
+    }
+    function deviceSettings() {
+        const out = Object.assign({}, GESTURE_DEFAULTS);
+        let from = 'default settings';
+        for (const [name, label] of [['MP1_DEFAULTS', 'default.js'], ['MP1_SETTINGS', 'settings.js']]) {
+            const data = typeof window !== 'undefined' ? window[name] : undefined;
+            if (data && typeof data === 'object') {
+                Object.keys(GESTURE_DEFAULTS).forEach(k => { if (k in data) out[k] = data[k]; });
+                from = label;
+            }
+        }
+        return {cfg: out, from};
+    }
+    function cheatSheetHtml() {
+        const shown = layers.filter(l => !l.secret);
+        const hidden = layers.length - shown.length;
+        const date = new Date().toLocaleDateString();
+        let html = `<h1>MP1 cheat sheet</h1>
+            <p class="cs-sub">${shown.length} layer(s), printed ${esc(date)}${hidden ? ' · secret layers not shown' : ''} · keys are laid out as on the pad</p>`;
+        for (const l of shown) {
+            html += `<section class="cs-layer"><h2>${esc(l.name)}${l.default ? ' <small>★ home layer (at power-up)</small>' : ''}</h2><div class="cs-keys">`;
+            l.keys.forEach((k, i) => {
+                const desc = describeAction(k.action);
+                const tags = (k.confirm ? '<span class="cs-tag">HOLD TO CONFIRM</span>' : '') +
+                             (k.repeat && !k.confirm ? '<span class="cs-tag">REPEATS</span>' : '');
+                const empty = !k.icon && !k.action;
+                html += `<div class="cs-key${empty ? ' empty' : ''}"><span class="cs-num">${i + 1}</span>
+                    <div class="cs-icon">${esc(k.icon.slice(0, MAX_ICON)) || '&nbsp;'}</div>
+                    <div class="cs-desc">${empty ? '—' : esc(desc || 'label only')}</div>${tags}</div>`;
+            });
+            html += '</div>';
+            const E = l.encoder;
+            if (E.icon || E.cw || E.ccw) {
+                html += `<div class="cs-enc"><strong>Encoder:</strong> <span class="cs-icon">${esc(E.icon.slice(0, MAX_ICON))}</span>` +
+                    `↻ ${esc(describeAction(E.cw) || 'nothing')} &nbsp;·&nbsp; ↺ ${esc(describeAction(E.ccw) || 'nothing')}` +
+                    `${E.accel ? ' &nbsp;·&nbsp; faster when spun fast' : ''}</div>`;
+            }
+            html += '</section>';
+        }
+        const {cfg, from} = deviceSettings();
+        const rows = [['Click', 'Layers menu'], [`Long press (${cfg.long_press_duration} s)`, 'Settings menu']];
+        GESTURE_ROWS.forEach(([key, label]) => {
+            const fn = cfg[key];
+            if (GESTURE_LABELS[fn]) rows.push([label, GESTURE_LABELS[fn]]);
+        });
+        html += `<section class="cs-knob"><h2>Encoder button</h2><table>${rows.map(([g, f]) =>
+            `<tr><td>${esc(g)}</td><td>${esc(f)}</td></tr>`).join('')}</table>
+            <p class="cs-sub" style="margin:1.5mm 0 0">Gestures from ${esc(from)}. Inside menus: turn to move, click to choose.</p></section>`;
+        return html;
+    }
+    function printCheatSheet() {
+        document.getElementById('cheatSheet').innerHTML = cheatSheetHtml();
+        document.body.classList.add('print-cheats');
+        window.print();
+        setTimeout(() => document.body.classList.remove('print-cheats'), 500);
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Sharing single layers between macropads
+    //   File: {"mp1_layer": 1, "exported": "YYYY-MM-DD", "layer": {...same as in keymap.js}}
+    //   Default / secret are never exported. Import also accepts a whole keymap (all its
+    //   layers, old version 1 too) or a bare layer object. Layer lights are left out when this
+    //   macropad's settings say it has no LED strip.
+    // ════════════════════════════════════════════════════════════
+    const LAYER_FILE_VERSION = 1;
+    function layerReport(html, isError = false) {
+        const box = document.getElementById('layerReport');
+        box.innerHTML = html ? `<div class="notice${isError ? ' issue-error' : ''}">${html}</div>` : '';
+    }
+    function layerFileData(l) {
+        const keep = layers;
+        layers = [l];
+        let out;
+        try { out = toFile().layers[0]; } finally { layers = keep; }
+        delete out.default;
+        delete out.secret;
+        return {mp1_layer: LAYER_FILE_VERSION, exported: localDate(), layer: out};
+    }
+    function localDate() {
+        const d = new Date(), two = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+    }
+    const layerFileName = l => (l.name || 'LAYER').replace(/[^A-Za-z0-9 _-]+/g, '_') + '.mp1layer.json';
+    function exportOk(l) {
+        if (!l.secret) return true;
+        return confirm(`"${l.name}" is a secret layer. The exported layer contains what its keys type (passwords and so on) as plain text, and it is imported as a regular layer.\n\nExport anyway?`);
+    }
+    async function exportLayerFile() {
+        const l = layers[current];
+        if (!exportOk(l)) return;
+        const text = pretty(layerFileData(l)) + '\n';
+        try {
+            const done = typeof MP1Files !== 'undefined' ? await MP1Files.saveAs(layerFileName(l), text) : 'Not saved';
+            layerReport(`<strong>✓ ${esc(done)}.</strong> On the other macropad's configurator, use <em>⇧ Import layer</em>.`);
+        } catch (e) { failed(e); }
+    }
+    async function importLayerFile() {
+        try {
+            if (typeof MP1Files === 'undefined') return;
+            const file = await MP1Files.openFile();
+            if (!file) return;
+            let data;
+            try { data = fileData(file.text); } catch (e) {
+                return layerReport(`<strong>${esc(file.name)} isn't a layer file:</strong> ${esc(e.message)}`, true);
+            }
+            const problem = importLayers(data, file.name);
+            if (problem) layerReport(esc(problem), true);
+        } catch (e) { failed(e); }
+    }
+    // { } next to the layer buttons: this layer as text to copy, or paste one to import
+    function openLayerJson() {
+        const l = layers[current];
+        if (l.secret && !exportOk(l)) return;
+        const text = pretty(layerFileData(l));
+        openModal(`Layer ${l.name} as text`,
+            'To share this layer, Copy it and paste it into a message. To import a layer someone sent you, replace this text with theirs and press Import as new layer (it is added at the end; this layer is not changed).',
+            text,
+            data => {
+                const same = JSON.stringify(data.layer || data) === JSON.stringify(layerFileData(l).layer);
+                if (same) return 'This is still this layer. Paste the layer you want to import over it first (or use Duplicate layer to copy it).';
+                return importLayers(data, 'the pasted text');
+            },
+            {apply: 'Import as new layer', extra: {label: '⧉ Copy', onClick: copyModalText}});
+    }
+    async function copyModalText() {
+        const box = document.getElementById('modalText');
+        try {
+            await navigator.clipboard.writeText(box.value.trim() + '\n');
+            document.getElementById('modalError').textContent = '';
+            document.getElementById('modalExtra').textContent = '✓ Copied';
+            setTimeout(() => { const b = document.getElementById('modalExtra'); if (modalExtra) b.textContent = modalExtra.label; }, 1500);
+        } catch (e) {
+            document.getElementById('modalError').textContent = "Couldn't copy: select the text and press Ctrl+C.";
+        }
+    }
+    // The layers (keymap-file format) in a shared file, a keymap, or a bare layer
+    function sharedLayers(data, notes) {
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+            if ('mp1_layer' in data) {
+                if (data.mp1_layer !== LAYER_FILE_VERSION) notes.push(`Layer file version ${data.mp1_layer}; read as version ${LAYER_FILE_VERSION}.`);
+                if (data.layer && typeof data.layer === 'object') return [data.layer];
+            }
+            if (data.version === 2 && Array.isArray(data.layers)) return data.layers;
+            if (!('version' in data) && (data.keymap || data.layer_names)) return convertV1(data, notes).layers;
+            if (typeof data.name === 'string' && ('keys' in data || 'encoder' in data)) return [data];
+        }
+        throw new Error("That isn't an MP1 layer (or keymap).");
+    }
+    // Returns a problem to show, or null when done (or cancelled)
+    function importLayers(data, source) {
+        const notes = [];
+        let list;
+        try { list = sharedLayers(data, notes); } catch (e) { return e.message; }
+        list = list.filter(ld => ld && typeof ld === 'object');
+        if (!list.length) return `${source} has no layers.`;
+        if (list.length > 1 && !confirm(`${source} is a whole keymap with ${list.length} layers: ${list.map(l => l.name).join(', ')}.\n\nImport all of them as new layers?`)) return null;
+        if (layers.length + list.length > MAX_LAYERS)
+            return `There's only room for ${MAX_LAYERS - layers.length} more layer(s) (the configurator supports up to ${MAX_LAYERS}). Delete a layer first.`;
+        const strip = stripSettings();
+        const added = [];
+        for (const raw of list) {
+            const ld = clone(raw);
+            const name = typeof ld.name === 'string' && ld.name ? ld.name : 'IMPORTED';
+            if (ld.secret) notes.push(`${name} was a secret layer; it's imported as a regular layer (choose Secret 1 / 2 in its details to hide it again).`);
+            delete ld.secret;
+            delete ld.default;
+            if (ld.lights && strip.count === 0) {
+                notes.push(`${name}: its layer lights were left out (this macropad has no LED strip).`);
+                delete ld.lights;
+            }
+            ld.name = name;
+            const layer = fromFile({version: 2, layers: [ld]}, notes)[0];
+            if (layers.some(l => l.name === layer.name)) {
+                layer.name = uniqueName(layer.name);
+                notes.push(`There's already a layer called ${name}, so it was renamed ${layer.name}.`);
+            }
+            layers.push(layer);
+            added.push(layer);
+        }
+        current = layers.indexOf(added[0]);
+        render();                                   // one undo step
+        layerReport(`<strong>✓ Imported ${added.map(l => esc(l.name)).join(', ')} from ${esc(source)}</strong> as ${added.length > 1 ? 'new layers' : 'a new layer'} at the end. Check it, then save the keymap.` +
+            (notes.length ? `<ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : ''));
+        return null;
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // Loading, saving, modals
+    // ════════════════════════════════════════════════════════════
+    function loadKeymap(data, source) {
+        const notes = [];
+        let converted = false;
+        if (data && !('version' in data) && (data.keymap || data.layer_names)) {
+            data = convertV1(data, notes);
+            converted = true;
+        }
+        const loaded = fromFile(data, notes);
+        layers = loaded;
+        const before = JSON.stringify(layers.map(l => [l.default, l.secret]));
+        ensureRoles();
+        if (JSON.stringify(layers.map(l => [l.default, l.secret])) !== before) {
+            notes.push('Home / secret layer settings were adjusted: exactly one home layer, at most one Secret 1 and one Secret 2, and the home layer is never secret.');
+        }
+        current = layers.findIndex(l => l.default);
+        render();
+        const title = converted
+            ? `✓ Converted a version 1 keymap with ${layers.length} layer(s). Download it to get the version 2 file.`
+            : `✓ ${source ? 'Opened ' + esc(source) + ': ' : 'Loaded '}${layers.length} layer(s).`;
+        document.getElementById('loadReport').innerHTML = `<div class="notice"><strong>${title}</strong>` +
+            (notes.length ? `<ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '') + '</div>';
+        setBaseline();
+        resetHistory();                     // a newly opened keymap starts a fresh undo history
+    }
+
+    document.getElementById('fileInput').addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            try {
+                loadKeymap(fileData(ev.target.result), file.name);
+            } catch (err) {
+                document.getElementById('loadReport').innerHTML =
+                    `<div class="notice issue-error"><strong>Couldn't load ${esc(file.name)}:</strong> ${esc(err.message)}</div>`;
+            }
+            e.target.value = '';
+        };
+        reader.readAsText(file);
+    });
+
+    // ─── Drive folder / Save as (mp1files.js) ───
+    function keymapText() { return pretty(toFile()) + '\n'; }
+    const KEYMAP_NOTE = 'MP1 macropad keymap. Edit with keymap_configurator.html (the JSON inside is the same as keymap.json).';
+    function keymapJs() { return wrapJs('MP1_KEYMAP', keymapText(), KEYMAP_NOTE); }
+    // keymap.js / keymap.json contents: the JSON between the first { and the last }
+    function fileData(text) {
+        const start = text.indexOf('{'), end = text.lastIndexOf('}');
+        if (start < 0 || end < start) throw new Error('no { ... } found');
+        return JSON.parse(text.slice(start, end + 1));
+    }
+    function wrapJs(name, jsonText, note) { return `// ${note}\nvar ${name} = ${jsonText.trimEnd()};\n`; }
+    function errorsOk() {
+        const errors = validate().filter(i => i.level === 'error');
+        return !errors.length || confirm(`This keymap has ${errors.length} error(s) (listed above). The macropad will show them at start-up and skip those keys.\n\nSave anyway?`);
+    }
+    function toast(text) {
+        document.getElementById('saveStatus').innerHTML = `<span class="toast">✓ ${esc(text)}</span>`;
+        setTimeout(changed, 3000);
+    }
+    function failed(e) {
+        if (typeof MP1Files !== 'undefined' && MP1Files.cancelled(e)) return;
+        alert(e.message || String(e));
+    }
+    async function openKeymapFromDrive() {
+        try {
+            const file = await MP1Files.readFirst(['keymap.js', 'keymap.json']);
+            let data;
+            try { data = fileData(file.text); } catch (e) {
+                document.getElementById('loadReport').innerHTML =
+                    `<div class="notice issue-error"><strong>${file.name} on the drive isn't valid JSON:</strong> ${esc(e.message)}</div>`;
+                return;
+            }
+            loadKeymap(data, `${file.name} from "${await MP1Files.folderName()}"`);
+            await updateDrive();
+        } catch (e) { failed(e); }
+    }
+    async function saveKeymapToDrive() {
+        if (!errorsOk()) return;
+        try {
+            const where = await MP1Files.writeTo('keymap.js', keymapJs());
+            await updateDrive();
+            setBaseline();
+            toast(`Saved keymap.js to "${where}" (old copy kept as keymap.js.bak)`);
+        } catch (e) { failed(e); }
+    }
+    async function saveKeymapAs() {
+        if (!errorsOk()) return;
+        try {
+            const done = await MP1Files.saveAsEither('keymap.js', {js: keymapJs(), json: keymapText()});
+            setBaseline();
+            toast(done);
+        } catch (e) { failed(e); }
+    }
+    async function connectDrive() {
+        try { await MP1Files.connect(); await updateDrive(); } catch (e) { failed(e); }
+    }
+    async function updateDrive() {
+        if (typeof MP1Files === 'undefined' || !MP1Files.hasFolders) return;
+        for (const id of ['driveStatus', 'connectBtn', 'openDriveBtn', 'saveDriveBtn']) document.getElementById(id).hidden = false;
+        document.getElementById('saveAsBtn').className = '';           // Save to drive is the main button now
+        const name = await MP1Files.folderName();
+        document.getElementById('driveStatus').classList.toggle('on', !!name);
+        document.getElementById('driveName').textContent = name ? `Drive folder: ${name}` : 'No drive folder yet';
+        document.getElementById('connectBtn').textContent = name ? 'Change folder…' : 'Connect folder…';
+        document.getElementById('fileHint').textContent = name
+            ? 'Open from drive / Save to drive use keymap.js in that folder (or keymap.json if there is no keymap.js). Open file… and Save as… let you pick any location (name the file .json for plain JSON).'
+            : 'Connect folder… once and pick the CIRCUITPY drive; then Save to drive writes keymap.js there directly. Open file… and Save as… let you pick any location (name the file .json for plain JSON).';
+    }
+
+    function downloadKeymap() {
+        const errors = validate().filter(i => i.level === 'error');
+        if (errors.length && !confirm(`This keymap has ${errors.length} error(s) (listed above). The macropad will show them at start-up and skip those keys.\n\nDownload anyway?`)) return;
+        const blob = new Blob([pretty(toFile()) + '\n'], {type: 'application/json'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'keymap.json';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    function copyKeymap() {
+        const btn = document.getElementById('copyJsonBtn');
+        const say = text => { btn.dataset.tip = text; setTimeout(() => { btn.dataset.tip = 'Copy JSON'; }, 1500); };
+        navigator.clipboard.writeText(pretty(toFile()) + '\n')
+            .then(() => say('Copied!'))
+            .catch(() => say('Copy failed: select the text and press Ctrl+C'));
+    }
+
+    let modalApply = null;
+    let modalExtra = null;
+    // options: {apply: 'button label', extra: {label, onClick}} (a second button on the left)
+    function openModal(title, help, text, onApply, options = {}) {
+        document.getElementById('modalApplyBtn').textContent = options.apply || 'Apply';
+        const extra = document.getElementById('modalExtra');
+        modalExtra = options.extra || null;
+        extra.hidden = !modalExtra;
+        extra.textContent = modalExtra ? modalExtra.label : '';
+        document.getElementById('modalTitle').textContent = title;
+        document.getElementById('modalHelp').textContent = help;
+        document.getElementById('modalText').value = text;
+        document.getElementById('modalError').textContent = '';
+        modalApply = onApply;
+        document.getElementById('jsonModal').classList.add('active');
+        document.getElementById('modalText').focus();
+    }
+    function closeModal() {
+        document.getElementById('jsonModal').classList.remove('active');
+        modalApply = null;
+        modalExtra = null;
+    }
+    function modalExtraClick() { if (modalExtra) modalExtra.onClick(); }
+    function applyModal() {
+        let data;
+        try {
+            data = JSON.parse(document.getElementById('modalText').value);
+        } catch (e) {
+            document.getElementById('modalError').textContent = 'Invalid JSON: ' + e.message;
+            return;
+        }
+        const problem = modalApply(data);
+        if (problem) document.getElementById('modalError').textContent = problem;
+        else { closeModal(); render(); }
+    }
+
+    function editKeyJson(i) {
+        const L = layers[current];
+        openModal(`Key ${i + 1} JSON`,
+            'One key: an "icon" plus one action, e.g. {"icon": "CPY", "combo": ["CONTROL", "C"]}. Use null for an empty key.',
+            pretty(toFileKey(L.keys[i])),
+            data => {
+                let raw;
+                try { raw = sharedKey(data); } catch (e) { return e.message; }
+                const notes = [];
+                const key = fromFileKey(raw, `Key ${i + 1}`, notes);
+                if (notes.length) return notes.join('\n');
+                L.keys[i] = key;
+                return null;
+            },
+            {extra: {label: '⧉ Copy', onClick: copyModalText}});
+    }
+
+    // ─── Sharing single keys: {"mp1_key": 1, "exported": "YYYY-MM-DD", "key": {...as in keymap.js}} ───
+    const KEY_FILE_VERSION = 1;
+    const keyFileName = (k, i) => (k.icon || `KEY${i + 1}`).replace(/[^A-Za-z0-9 _+-]+/g, '_') + '.mp1key.json';
+    // The key in a saved key file or a bare key object (null = empty key)
+    function sharedKey(data) {
+        if (data === null) return null;
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+            if ('mp1_key' in data) return data.key === undefined ? null : data.key;
+            if ('mp1_layer' in data || 'layers' in data || 'keys' in data)
+                throw new Error("That's a layer (or a whole keymap), not a single key. Load it with the layer buttons next to the templates.");
+            return data;
+        }
+        throw new Error("That isn't an MP1 key.");
+    }
+    async function exportKeyFile(i) {
+        const L = layers[current], k = L.keys[i];
+        if (!k.icon && !k.action) return alert(`Key ${i + 1} is empty, so there's nothing to save.`);
+        if (L.secret && !confirm(`${L.name} is a secret layer. The saved key contains what it types (passwords and so on) as plain text.\n\nSave anyway?`)) return;
+        const text = pretty({mp1_key: KEY_FILE_VERSION, exported: localDate(), key: toFileKey(k)}) + '\n';
+        try {
+            const done = typeof MP1Files !== 'undefined' ? await MP1Files.saveAs(keyFileName(k, i), text) : 'Not saved';
+            toast(`${done} (key ${i + 1} of ${L.name})`);
+        } catch (e) { failed(e); }
+    }
+    async function importKeyFile(i) {
+        try {
+            if (typeof MP1Files === 'undefined') return;
+            const file = await MP1Files.openFile();
+            if (!file) return;
+            let key;
+            const notes = [];
+            try { key = fromFileKey(sharedKey(fileData(file.text)), `Key ${i + 1}`, notes); }
+            catch (e) { return alert(`Couldn't load ${file.name}: ${e.message}`); }
+            const L = layers[current], old = L.keys[i];
+            if ((old.icon || old.action) && !confirm(`Replace key ${i + 1}${old.icon ? ` (${old.icon})` : ''} with ${key.icon || 'the key'} from ${file.name}?`)) return;
+            L.keys[i] = key;
+            render();                               // one undo step
+            if (notes.length) alert(`Loaded ${file.name}, with changes:\n\n${notes.join('\n')}`);
+            else toast(`Loaded ${file.name} into key ${i + 1}`);
+        } catch (e) { failed(e); }
+    }
+
+    function pasteMacro(id) {
+        openModal('Paste macro JSON',
+            'Paste a JSON list of steps, e.g. [{"key": "TAB"}, {"text": "hello"}]. They are added to the end of this macro. Output from the old Macro Recorder page is converted automatically.',
+            '',
+            data => {
+                if (!Array.isArray(data)) return 'Expected a list of steps: [ ... ]';
+                const notes = [];
+                const steps = data.map((s, i) => {
+                    const v2 = (s && typeof s === 'object' && 'type' in s) ? convertV1Action(s, `Step ${i + 1}`, notes) : s;
+                    return fromFileAction(v2, `Step ${i + 1}`, notes);
+                });
+                if (notes.length) return notes.join('\n');
+                const seq = refs[id].get().value;
+                seq.push(...compressSteps(steps.filter(Boolean)));
+                return null;
+            });
+    }
+
+    function openHelp() { window.open('help.html', '_blank'); }
+
+    document.getElementById('jsonModal').addEventListener('click', e => { if (e.target.id === 'jsonModal') closeModal(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !rec.open) closeModal(); });
+    if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('keydown', recKey, true);      // capture: ahead of the page's own shortcuts
+        window.addEventListener('keyup', recKey, true);
+        window.addEventListener('blur', () => { if (rec.live) recStop('Paused: the window lost focus. Keys typed elsewhere aren\'t recorded.'); });
+    }
+    document.addEventListener('keydown', e => {
+        if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+        const k = e.key.toLowerCase();
+        if (k !== 'z' && k !== 'y') return;
+        if (document.getElementById('jsonModal').classList.contains('active')) return;
+        if (isTextField(e.target)) return;  // typing in a box: the box's own undo
+        e.preventDefault();
+        if (k === 'y' || e.shiftKey) redo(); else undo();
+    });
+    if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('afterprint', () => document.body.classList.remove('print-cheats'));
+    }
+
+    document.getElementById('templateSelect').innerHTML += Object.entries(TEMPLATES)
+        .map(([k, t]) => `<option value="${k}">${esc(t.label)}</option>`).join('');
+
+    // ─── Start with keymap.js from this folder, or an empty two-layer keymap ───
+    layers = [blankLayer('LAYER1'), blankLayer('LAYER2')];
+    layers[0].default = true;
+    render();
+    setBaseline();
+    resetHistory();
+    if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+    }
+    if (typeof MP1_KEYMAP === 'object' && MP1_KEYMAP) {
+        try { loadKeymap(MP1_KEYMAP, 'keymap.js from this folder'); }
+        catch (e) {
+            document.getElementById('loadReport').innerHTML =
+                `<div class="notice issue-error"><strong>Couldn't use keymap.js from this folder:</strong> ${esc(e.message)}</div>`;
+        }
+    }
+    updateDrive();
+    try { if (localStorage.getItem('mp1-preview') === '1') togglePreview(true); } catch (e) { /* not remembered */ }
+    </script>
+</body>
+</html>
