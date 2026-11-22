@@ -1,0 +1,325 @@
+<script>
+// ─── Key pictures: one 1-bit picture per key, stored in the layer file ({src, w, h, bits}) ───
+// Icon: one of the four sets (icons.html), drawn into pad pixels at the key's size. Draw: by hand on a
+// grid. Small = above the label (up to 29 x 11); Big = the picture alone (up to 29 x 24).
+// A layer's own picture (its "pic") is its layer card's (up to 40 x 40): the Layer card section of the layer panel.
+const PIC_BOX = {small: [29, PAD.PIC_H_LABEL], big: [29, 24], card: [40, 40]};
+const ICON_SETS = {fa: 'Font Awesome', ri: 'Remix Icon', si: 'Simple Icons', ms: 'Material'};
+
+function packBits(rows) {                   // rows of 0/1 arrays -> base64, (w + 7) >> 3 bytes a row
+    const h = rows.length, w = h ? rows[0].length : 0, bpr = (w + 7) >> 3, out = new Uint8Array(bpr * h);
+    rows.forEach((r, y) => r.forEach((v, x) => { if (v) out[y * bpr + (x >> 3)] |= 0x80 >> (x & 7); }));
+    let s = '';
+    for (const b of out) s += String.fromCharCode(b);
+    return btoa(s);
+}
+function rowsOf(bm) { const r = []; for (let y = 0; y < bm.h; y++) r.push(Array.from(bm.d.subarray(y * bm.w, (y + 1) * bm.w))); return r; }
+function trimRows(rows) {                   // to the ink (null: nothing drawn)
+    let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
+    rows.forEach((r, y) => r.forEach((v, x) => { if (v) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }));
+    return x1 < 0 ? null : rows.slice(y0, y1 + 1).map(r => r.slice(x0, x1 + 1));
+}
+const picOf = (rows, src) => rows && rows.length ? {src, w: rows[0].length, h: rows.length, bits: packBits(rows)} : null;
+
+// one icon, cropped to its ink and fitted into maxW x maxH (aspect kept), thresholded at half: rows, or null
+async function iconRows(value, maxW, maxH) {
+    const info = window.iconInfo(value);
+    if (!window.FA_OK || !info || info.set === 'my') return null;
+    const el = document.createElement('i');
+    el.className = info.cls;
+    el.textContent = info.text;
+    el.style.cssText = 'position:absolute;left:-9999px;top:0;font-size:16px';
+    document.body.appendChild(el);
+    const glyph = info.text || (getComputedStyle(el, '::before').content || '').replace(/^["']|["']$/g, '');
+    const fam = getComputedStyle(el).fontFamily, wt = getComputedStyle(el).fontWeight;
+    el.remove();
+    if (!glyph || glyph === 'none') return null;
+    try { await document.fonts.load(`${wt} 64px ${fam}`, glyph); } catch (e) { return null; }
+    const N = 256, k = document.createElement('canvas');
+    k.width = k.height = N;
+    const g = k.getContext('2d');
+    g.font = `${wt} ${info.text ? 180 : 200}px ${fam}`;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(glyph, N / 2, N / 2);
+    const d = g.getImageData(0, 0, N, N).data;
+    let x0 = N, y0 = N, x1 = -1, y1 = -1;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (d[(y * N + x) * 4 + 3] > 20) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if (x1 < 0 || (info.text && x1 - x0 > N * 0.9)) return null;
+    const sw = x1 - x0 + 1, sh = y1 - y0 + 1, s = Math.min(maxW / sw, maxH / sh);
+    const w = Math.max(1, Math.round(sw * s)), h = Math.max(1, Math.round(sh * s));
+    const o = document.createElement('canvas');
+    o.width = w; o.height = h;
+    o.getContext('2d').drawImage(k, x0, y0, sw, sh, 0, 0, w, h);
+    const od = o.getContext('2d').getImageData(0, 0, w, h).data, rows = [];
+    for (let y = 0; y < h; y++) { const r = []; for (let x = 0; x < w; x++) r.push(od[(y * w + x) * 4 + 3] >= 128 ? 1 : 0); rows.push(r); }
+    return trimRows(rows);
+}
+// an icon value ("a" or "a; b": two side by side) as a key picture of size 'small' / 'big', or null.
+// zoom: how much of the picture box it may fill, in % (Smaller / Bigger); kept in the picture when it isn't
+// the size's default, so the icon can be drawn again the same way. Big icons leave a little room around them.
+const ZOOM = {small: 100, big: 85, card: 90, min: 40, max: 100, step: 10};
+async function iconPic(value, size, zoom) {
+    const z = zoom || ZOOM[size], [BW, BH] = PIC_BOX[size], parts = window.iconParts(value);
+    const W = Math.max(4, Math.round(BW * z / 100)), H = Math.max(4, Math.round(BH * z / 100));
+    const pic = await iconPicFit(value, parts, W, H);
+    if (pic && z !== ZOOM[size]) pic.zoom = z;
+    return pic;
+}
+async function iconPicFit(value, parts, W, H) {
+    if (parts.length < 2) return picOf(await iconRows(parts[0], W, H), value);
+    const a = await iconRows(parts[0], (W - 2) >> 1, H), b = await iconRows(parts[1], (W - 2) >> 1, H);
+    if (!a || !b) return null;
+    const h = Math.max(a.length, b.length), w = a[0].length + 2 + b[0].length, rows = [];
+    for (let y = 0; y < h; y++) {
+        const ra = a[y - ((h - a.length) >> 1)] || new Array(a[0].length).fill(0), rb = b[y - ((h - b.length) >> 1)] || new Array(b[0].length).fill(0);
+        rows.push(ra.concat([0, 0], rb));
+    }
+    return picOf(rows, value);
+}
+const sizeOf = pic => pic && pic.h > PAD.PIC_H_LABEL ? 'big' : 'small';
+
+// ─── the icon lists (each set's own files online, the first time it's searched) ───
+const iconLists = {};
+async function iconList(set) {
+    if (iconLists[set]) return iconLists[set];
+    const text = url => fetch(url).then(r => r.text());
+    let out = [];
+    if (set === 'fa') {
+        const names = css => { const o = []; for (const m of css.matchAll(/((?:\.fa-[a-z0-9-]+:+before,?)+)\{content:/g)) o.push([...m[1].matchAll(/\.fa-([a-z0-9-]+):/g)].pop()[1]); return o; };
+        const [all, brands] = await Promise.all([text(window.FA_CSS), text(window.FA_BRANDS_CSS)]);
+        const bset = new Set(names(brands));
+        out = [...new Set(names(all).filter(n => !bset.has(n)))].map(n => ({v: 'fa-solid fa-' + n, n}))
+            .concat([...bset].map(n => ({v: 'fa-brands fa-' + n, n: n + ' brand'})));
+    } else if (set === 'ri') {
+        out = [...new Set([...(await text(window.ICON_SET_CSS.ri)).matchAll(/\.ri-([a-z0-9-]+):+before\{content:/g)].map(m => m[1]))].map(n => ({v: 'ri-' + n, n}));
+    } else if (set === 'si') {
+        out = [...new Set([...(await text(window.ICON_SET_CSS.si)).matchAll(/\.si-([a-z0-9][a-z0-9-]*)::before\{content:/g)].map(m => m[1]))].map(n => ({v: 'si si-' + n, n: n + ' brand logo'}));
+    } else if (set === 'ms') {
+        out = [...new Set([...(await text(window.MS_NAMES_URL)).matchAll(/"([a-z0-9_]+)"/g)].map(m => m[1]))].map(n => ({v: 'ms ' + n, n: n.replace(/_/g, ' ')}));
+    }
+    return (iconLists[set] = out);
+}
+
+// ─── the Picture section of the key panel ───
+const PICS = {mode: null, size: 'small', tab: 'all', drawn: 0, grid: null, query: '', target: 'key'};     // query: kept until another key is picked
+function pictureSection(key) {
+    PICS.target = 'key';
+    const pic = key.pic && key.pic.bits ? key.pic : null;
+    const mode = PICS.mode || (pic ? (pic.src === 'drawn' ? 'draw' : 'icon') : key.pic && key.pic.src ? 'icon' : 'none');
+    PICS.mode = mode;
+    PICS.size = pic ? sizeOf(pic) : (key.label ? 'small' : 'big');
+    const missing = key.pic && key.pic.src && !key.pic.bits;
+    return `<div style="display:grid;gap:8px"><span class="lbl">Picture</span>
+      <div class="row"><span class="seg" role="group" aria-label="Picture">${[['icon', 'Icon'], ['draw', 'Draw'], ['none', 'None']].map(([m, t]) =>
+        `<button type="button" class="btn" data-picmode="${m}" aria-pressed="${m === mode}">${t}</button>`).join('')}</span>
+        <span class="seg" role="group" aria-label="Size" ${mode === 'none' ? 'hidden' : ''}>${[['small', 'With label'], ['big', 'Alone, big']].map(([s, t]) =>
+        `<button type="button" class="btn" data-picsize="${s}" aria-pressed="${s === PICS.size}">${t}</button>`).join('')}</span>
+        ${pic && pic.src !== 'drawn' && mode === 'icon' ? `<span class="seg" role="group" aria-label="Icon size">
+          <button type="button" class="btn small" data-zoom="-1" ${(pic.zoom || ZOOM[PICS.size]) <= ZOOM.min ? 'disabled' : ''}>Smaller</button>
+          <button type="button" class="btn small" data-zoom="1" ${(pic.zoom || ZOOM[PICS.size]) >= ZOOM.max ? 'disabled' : ''}>Bigger</button></span>` : ''}
+        ${pic ? '<canvas class="pix" id="picPreview"></canvas>' : ''}</div>
+      ${missing ? `<div class="msg">Icon “${esc(key.pic.src)}” isn't in pad pixels yet. <button class="btn" type="button" id="picMake">Make pad pixels</button></div>` : ''}
+      <div id="picBody" style="display:grid;gap:8px"></div></div>`;
+}
+function pictureWire(key) {
+    document.querySelectorAll('[data-picmode]').forEach(b => b.onclick = () => {
+        PICS.mode = b.dataset.picmode;
+        if (PICS.mode === 'none' && key.pic) setPic(null);
+        else keyPanel();
+    });
+    document.querySelectorAll('[data-picsize]').forEach(b => b.onclick = async () => {
+        PICS.size = b.dataset.picsize;
+        const k = current();
+        if (k.pic && k.pic.src && k.pic.src !== 'drawn') { const p = await iconPic(k.pic.src, PICS.size); if (p) return setPic(p); }
+        if (k.pic && k.pic.src === 'drawn') return setPic(refitDrawn(k.pic, PICS.size));
+        keyPanel();
+    });
+    document.querySelectorAll('[data-zoom]').forEach(b => b.onclick = async () => {
+        const k = current();
+        if (!k.pic || !k.pic.src || k.pic.src === 'drawn') return;
+        const z = Math.max(ZOOM.min, Math.min(ZOOM.max, (k.pic.zoom || ZOOM[PICS.size]) + ZOOM.step * +b.dataset.zoom));
+        const p = await iconPic(k.pic.src, PICS.size, z);
+        if (p) setPic(p);
+    });
+    if ($('picMake')) $('picMake').onclick = async () => {
+        const p = await iconPic(key.pic.src, PICS.size);
+        if (p) setPic(p); else $('picMake').textContent = window.FA_OK ? 'That icon couldn\'t be drawn' : 'The icons need the internet';
+    };
+    if (PICS.mode === 'icon') iconBody(key);
+    else if (PICS.mode === 'draw') drawBody(key);
+}
+function setPic(pic) {
+    const key = Object.assign({}, current());
+    if (pic) key.pic = pic; else delete key.pic;
+    changeKey(editing.layer, editing.k, key);
+    keyPanel();
+}
+
+// Icon: search and pick
+function iconBody(key) {
+    $('picBody').innerHTML = `<input class="field" id="picSearch" type="search" placeholder="${window.FA_OK ? 'Search the icons (e.g. copy, play, excel)' : 'The icons load from the internet: not connected'}" autocomplete="off" value="${esc(PICS.query)}">
+        <div class="row" role="group" aria-label="Icon set">${[['all', 'All'], ...Object.entries(ICON_SETS)].map(([k, t]) =>
+          `<button type="button" class="btn small" data-iset="${k}" aria-pressed="${k === PICS.tab}">${t}</button>`).join('')}</div>
+        <div class="icongrid" id="picGrid"></div>`;
+    document.querySelectorAll('[data-iset]').forEach(b => b.onclick = () => {
+        PICS.tab = b.dataset.iset;
+        document.querySelectorAll('[data-iset]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+        searchIcons();
+    });
+    $('picSearch').oninput = () => { PICS.query = $('picSearch').value; searchIcons(); };
+    $('picGrid').onclick = async e => {
+        const b = e.target.closest('[data-icon]');
+        if (!b) return;
+        const card = PICS.target === 'card';
+        const p = await iconPic(b.dataset.icon, card ? 'card' : PICS.size);
+        if (p) (card ? setCardPic : setPic)(p);
+    };
+    searchIcons();
+}
+async function searchIcons() {
+    const grid = $('picGrid'), mine = ++PICS.drawn;
+    if (!grid) return;
+    if (!window.FA_OK) { grid.innerHTML = '<span class="sub">No icons without the internet: use Draw.</span>'; return; }
+    const q = ($('picSearch').value || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const sets = PICS.tab === 'all' ? Object.keys(ICON_SETS) : [PICS.tab];
+    let found = [];
+    for (const s of sets) {
+        try { found = found.concat((await iconList(s)).filter(i => q.every(w => i.n.includes(w)))); } catch (e) { /* that set didn't load */ }
+        if (mine !== PICS.drawn) return;
+    }
+    found.sort((a, b) => (q.length && a.n.split(' ')[0] === q[0] ? 0 : 1) - (q.length && b.n.split(' ')[0] === q[0] ? 0 : 1));
+    grid.innerHTML = found.slice(0, 120).map(i => `<button type="button" class="ibtn" data-icon="${esc(i.v)}" title="${esc(i.v)}">${window.iconHtml(i.v)}</button>`).join('')
+        + (found.length > 120 ? `<span class="sub">${found.length - 120} more: type more of the name.</span>` : found.length ? '' : '<span class="sub">Nothing found.</span>');
+}
+
+// Draw: a pixel grid the size of the picture box
+function gridFrom(pic, size) {
+    const [W, H] = PIC_BOX[size], rows = Array.from({length: H}, () => new Array(W).fill(0));
+    const bm = pictureOf(pic);
+    if (bm) {
+        const ox = (W - bm.w) >> 1, oy = (H - bm.h) >> 1;
+        for (let y = 0; y < bm.h; y++) for (let x = 0; x < bm.w; x++) if (bm.d[y * bm.w + x] && rows[y + oy] && x + ox < W && x + ox >= 0) rows[y + oy][x + ox] = 1;
+    }
+    return rows;
+}
+const refitDrawn = (pic, size) => picOf(trimRows(gridFrom(pic, size)), 'drawn');
+function drawBody(key) {
+    PICS.grid = gridFrom(key.pic && key.pic.bits ? key.pic : null, PICS.size);
+    const [W, H] = PIC_BOX[PICS.size], C = 12;
+    $('picBody').innerHTML = `<canvas id="picGridCanvas" width="${W * C}" height="${H * C}" style="width:${W * C}px;height:${H * C}px;cursor:crosshair;border-radius:4px;touch-action:none"></canvas>
+        <div class="row">${[['inv', 'Invert'], ['clr', 'Clear'], ['l', '←'], ['u', '↑'], ['d', '↓'], ['r', '→']].map(([a, t]) =>
+          `<button type="button" class="btn small" data-draw="${a}">${t}</button>`).join('')}</div>
+        <span class="sub">Click or drag to draw; start on a lit pixel to erase.</span>`;
+    const cv = $('picGridCanvas');
+    const paintGrid = () => {
+        const g = cv.getContext('2d');
+        g.fillStyle = '#050607'; g.fillRect(0, 0, cv.width, cv.height);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { g.fillStyle = PICS.grid[y][x] ? '#e9f5ff' : '#14181d'; g.fillRect(x * C + 1, y * C + 1, C - 2, C - 2); }
+    };
+    const save = () => setPicKeepPanel(picOf(trimRows(PICS.grid), 'drawn'));
+    let ink = null;
+    const at = e => { const r = cv.getBoundingClientRect(); return [Math.floor((e.clientX - r.left) / C), Math.floor((e.clientY - r.top) / C)]; };
+    cv.onpointerdown = e => { const [x, y] = at(e); if (x < 0 || y < 0 || x >= W || y >= H) return; ink = PICS.grid[y][x] ? 0 : 1; PICS.grid[y][x] = ink; cv.setPointerCapture(e.pointerId); paintGrid(); };
+    cv.onpointermove = e => { if (ink === null) return; const [x, y] = at(e); if (x < 0 || y < 0 || x >= W || y >= H || PICS.grid[y][x] === ink) return; PICS.grid[y][x] = ink; paintGrid(); };
+    cv.onpointerup = () => { if (ink !== null) { ink = null; save(); } };
+    document.querySelectorAll('[data-draw]').forEach(b => b.onclick = () => {
+        const a = b.dataset.draw, gr = PICS.grid;
+        if (a === 'inv') gr.forEach(r => r.forEach((v, x) => r[x] = v ? 0 : 1));
+        else if (a === 'clr') gr.forEach(r => r.fill(0));
+        else if (a === 'l') gr.forEach(r => { r.shift(); r.push(0); });
+        else if (a === 'r') gr.forEach(r => { r.pop(); r.unshift(0); });
+        else if (a === 'u') { gr.shift(); gr.push(new Array(W).fill(0)); }
+        else if (a === 'd') { gr.pop(); gr.unshift(new Array(W).fill(0)); }
+        paintGrid(); save();
+    });
+    paintGrid();
+}
+// a drawing changed: send it, redraw the previews, keep the grid (so a drag isn't interrupted)
+function setPicKeepPanel(pic) {
+    const key = Object.assign({}, current());
+    if (pic) key.pic = pic; else delete key.pic;
+    changeKey(editing.layer, editing.k, key, 'draw:' + editing.layer + ':' + editing.k);
+    previews();
+}
+
+// ─── every converted key (and layer card) that has an icon name but no pixels yet: [layer, key 0-7 or 'card'] ───
+function missingPics() {
+    const out = [];
+    kmAll().forEach((L, li) => {
+        (L.data.keys || []).forEach((k, i) => { if (k && k.pic && k.pic.src && !k.pic.bits) out.push([li, i]); });
+        if (!L.hold && L.data.pic && L.data.pic.src && !L.data.pic.bits) out.push([li, 'card']);
+    });
+    return out;
+}
+// the picture one of those should get (or null)
+async function missingPicFor(li, i) {
+    if (i === 'card') return iconPic(kmAll()[li].data.pic.src, 'card');
+    const key = keyOf(li, i);
+    return iconPic(key.pic.src, key.label ? 'small' : 'big');
+}
+async function drawAllIcons() {
+    const list = missingPics();
+    let done = 0;
+    for (const [li, i] of list) {
+        const p = await missingPicFor(li, i);
+        if (!p) continue;
+        if (i === 'card') changeLayer(li, {pic: p});
+        else changeKey(li, i, Object.assign({}, keyOf(li, i), {pic: p}));
+        done++;
+        $('drawAll').textContent = `Drawing icons… ${done} / ${list.length}`;
+    }
+    renderEditor();
+}
+function drawAllButton() {
+    const n = missingPics().length, box = $('drawAllBox');
+    if (!box) return;
+    box.innerHTML = n ? `<button class="btn" type="button" id="drawAll" ${window.FA_OK ? '' : 'disabled title="The icons need the internet"'}>Draw ${n} icon${n === 1 ? '' : 's'} into pad pixels</button>` : '';
+    if (n) $('drawAll').onclick = drawAllIcons;
+}
+// ─── the layer panel's Layer card section: the card's preview, its picture (Icon / None, Smaller / Bigger) ───
+const CARD = {mode: null, layer: null};
+function cardSection(d) {
+    PICS.target = 'card';
+    if (CARD.layer !== d) { CARD.layer = d; CARD.mode = null; }
+    const pic = d.pic && d.pic.bits ? d.pic : null, missing = d.pic && d.pic.src && !d.pic.bits;
+    const mode = CARD.mode || (d.pic ? 'icon' : 'none');
+    CARD.mode = mode;
+    const z = pic && (pic.zoom || ZOOM.card);
+    return `<h4>Layer card</h4>
+        <span class="sub">What <b>Layer cards</b> shows for this layer: a big picture you can see at arm's length. Layer cards is a pad
+          function: set it for the click in Settings → Encoder, or put it on a gesture, a key or HOLD+KEY. Turn to flip, click to pick.</span>
+        <div class="row wrap" style="align-items:flex-start"><canvas class="pix" id="cardPreview" title="The card on the pad"></canvas>
+          <div style="display:grid;gap:8px"><span class="seg" role="group" aria-label="Card picture">${[['icon', 'Icon'], ['none', 'Name only']].map(([m, t]) =>
+            `<button type="button" class="btn" data-cardmode="${m}" aria-pressed="${m === mode}">${t}</button>`).join('')}</span>
+            ${pic && pic.src !== 'drawn' ? `<span class="seg" role="group" aria-label="Picture size">
+              <button type="button" class="btn small" data-cardzoom="-1" ${z <= ZOOM.min ? 'disabled' : ''}>Smaller</button>
+              <button type="button" class="btn small" data-cardzoom="1" ${z >= ZOOM.max ? 'disabled' : ''}>Bigger</button></span>` : ''}</div></div>
+        ${missing ? `<div class="msg">Icon “${esc(d.pic.src)}” isn't in pad pixels yet. <button class="btn" type="button" id="cardMake">Make pad pixels</button></div>` : ''}
+        ${mode === 'icon' ? '<div id="picBody" style="display:grid;gap:8px"></div>' : ''}`;
+}
+function cardWire(d) {
+    const i = KM.layers.findIndex(L => L.data === d);
+    paintBitmap($('cardPreview'), drawCard(d.name, pictureOf(d.pic), d.name === KM.index.home ? 'HOME' : '', `${i + 1}/${KM.layers.length}`), 2);
+    document.querySelectorAll('[data-cardmode]').forEach(b => b.onclick = () => {
+        CARD.mode = b.dataset.cardmode;
+        if (CARD.mode === 'none' && d.pic) setCardPic(null);
+        else layerPanel(kmAll()[SEL.layer]);
+    });
+    document.querySelectorAll('[data-cardzoom]').forEach(b => b.onclick = async () => {
+        if (!d.pic || !d.pic.src || d.pic.src === 'drawn') return;
+        const z = Math.max(ZOOM.min, Math.min(ZOOM.max, (d.pic.zoom || ZOOM.card) + ZOOM.step * +b.dataset.cardzoom));
+        const p = await iconPic(d.pic.src, 'card', z);
+        if (p) setCardPic(p);
+    });
+    if ($('cardMake')) $('cardMake').onclick = async () => {
+        const p = await iconPic(d.pic.src, 'card');
+        if (p) setCardPic(p); else $('cardMake').textContent = window.FA_OK ? 'That icon couldn\'t be drawn' : 'The icons need the internet';
+    };
+    if (CARD.mode === 'icon') iconBody(d);
+}
+function setCardPic(pic) {
+    changeLayer(SEL.layer, {pic: pic || null});
+    layerPanel(kmAll()[SEL.layer]);
+}
+window.addEventListener('fa-ready', () => { drawAllButton(); if (PICS.mode === 'icon') searchIcons(); });
+</script>

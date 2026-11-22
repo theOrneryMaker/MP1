@@ -1,0 +1,86 @@
+<script>
+// ─── The player: the pad's screen as it is now (the Link's hello / state), live. Click a key = the pad presses it
+// ({"c": "press"}); the layer buttons switch the pad's layer ({"c": "layer"}). "Always on top" moves the card into
+// a Document Picture-in-Picture window (Chrome / Edge 116+) that stays above other windows; closing it brings
+// the card back. Module cards (Spotify) join it in step 7.
+const PLAYER = {pip: null, note: ''};
+const PLAYER_S = 3;                         // pad pixels -> card pixels (384 x 192)
+
+function padView() {
+    const p = Link.pad;
+    if (!p || !p.keys) return null;
+    const keys = p.keys.map(k => k ? {label: k[0], pic: k[1] ? pictureOf({w: k[1][0], h: k[1][1], bits: k[1][2]}) : null} : null);
+    return drawLayerView(p.hold ? 'HOLD+KEY' : p.layer, p.hold ? '' : (p.enc || ''), keys, kmLines(), kmLockBoxes());
+}
+function renderPlayer() {
+    const card = PLAYER.pip ? PLAYER.pip.document.getElementById('playerCard') : $('playerCard');
+    if (!card) return;
+    const p = Link.pad, doc = card.ownerDocument;
+    if (!Link.port || !p) {
+        card.innerHTML = '<div class="msg">Connect the pad to see it here.</div>';
+        return;
+    }
+    const layers = p.layers || [];
+    card.innerHTML = `<div class="pscreen"><canvas id="pScreen" width="${PAD.W * PLAYER_S}" height="${PAD.H * PLAYER_S}"
+            aria-label="The pad's screen: click a key to press it"></canvas></div>
+        <div class="row playerlayers" role="group" aria-label="Go to a layer">${layers.map(n =>
+            `<button class="btn small" type="button" data-play-layer="${esc(n)}" aria-pressed="${n === p.layer}">${esc(n)}</button>`).join('')}</div>
+        <div class="row sub"><span>${p.secret ? 'A secret layer is showing (its keys stay on the pad)' : p.hold ? 'HOLD+KEY showing' : 'Click a key to press it'}${p.jiggle ? ' · mouse jiggle on' : ''}</span>
+          <span style="margin-left:auto">${PLAYER.note ? esc(PLAYER.note) : ''}</span>
+          ${'documentPictureInPicture' in window ? `<button class="btn small" type="button" id="pipBtn" aria-pressed="${!!PLAYER.pip}">${PLAYER.pip ? 'Back to the page' : 'Always on top'}</button>` : ''}</div>`;
+    const bm = padView();
+    if (bm) paintBitmap(doc.getElementById('pScreen'), bm, PLAYER_S);
+    doc.getElementById('pScreen').onclick = e => {
+        const r = e.target.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width * PAD.W, y = (e.clientY - r.top) / r.height * PAD.H;
+        if (y < PAD.ROW_Y[0]) return;
+        const k = (y < PAD.ROW_Y[1] ? 0 : 4) + Math.min(3, Math.floor(x / 32));
+        if (!p.keys[k]) return;
+        Link.send({c: 'press', key: k});
+    };
+    card.querySelectorAll('[data-play-layer]').forEach(b => b.onclick = () => Link.send({c: 'layer', name: b.dataset.playLayer}));
+    const pip = doc.getElementById('pipBtn');
+    if (pip) pip.onclick = () => PLAYER.pip ? PLAYER.pip.close() : playerOnTop();
+}
+// the pad answers "busy" etc. with an error: shown on the card for a moment
+Link.on(m => {
+    if (m.t === 'hello' || m.t === 'state' || m.t === 'closed') renderPlayer();
+    else if (m.t === 'error' && (PLAYER.pip || !$('playerView').hidden)) {
+        PLAYER.note = m.msg; renderPlayer();
+        setTimeout(() => { PLAYER.note = ''; renderPlayer(); }, 3000);
+    }
+});
+
+async function playerOnTop() {
+    if (PLAYER.pip || !('documentPictureInPicture' in window)) return;
+    const card = $('playerCard');
+    let w;
+    try { w = await documentPictureInPicture.requestWindow({width: 420, height: 300}); }
+    catch (e) { PLAYER.note = 'The browser didn\'t open the window.'; renderPlayer(); return; }
+    for (const sheet of document.styleSheets) {           // the page's look (all inline)
+        try {
+            const st = w.document.createElement('style');
+            st.textContent = [...sheet.cssRules].map(r => r.cssText).join('\n');
+            w.document.head.appendChild(st);
+        } catch (e) { /* not readable */ }
+    }
+    w.document.title = 'MP1 Ember';
+    applyTheme(w.document);
+    w.document.body.className = 'pipbody';
+    const holder = document.createElement('div');
+    holder.id = 'playerAway';
+    holder.className = 'msg';
+    holder.textContent = 'The player is in its own window, on top of the others. Close that window to bring it back.';
+    card.parentNode.insertBefore(holder, card);
+    w.document.body.appendChild(card);
+    PLAYER.pip = w;
+    w.addEventListener('pagehide', () => {
+        const home = $('playerAway');
+        home.parentNode.insertBefore(card, home);
+        home.remove();
+        PLAYER.pip = null;
+        renderPlayer();
+    });
+    renderPlayer();
+}
+</script>

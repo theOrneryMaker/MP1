@@ -1,0 +1,53 @@
+<header class="top">
+  <span class="brand">MP1 Ember<small>01</small></span>
+  <nav class="tabs" aria-label="Sections">
+    <button class="on" type="button" data-view="editor">Keys</button>
+    <button type="button" data-view="settingsView">Settings</button>
+    <button type="button" data-view="filesView">Files</button>
+    <button type="button" data-view="playerView">Player</button>
+    <button type="button" data-view="spotifyView">Spotify</button>
+    <button type="button" data-view="helpView">Help</button>
+  </nav>
+  <div class="conn"><span class="dot" id="connDot"></span><span id="connText">Not connected</span>
+    <button class="btn" id="connectBtn" type="button">Connect…</button>
+    <button class="btn" id="themeBtn" type="button" aria-haspopup="true">Theme</button></div>
+  <div id="themeMenu" hidden role="dialog" aria-label="Theme"></div>
+</header>
+
+<main id="noPad" class="empty">
+  <h2>Connect the pad</h2>
+  <p>Plug the MP1 in, then click <b>Connect…</b> and pick its port. Next time this page connects by itself.</p>
+  <p class="sub" id="noSerial" hidden></p>
+  <button class="btn main" id="connectBig" type="button">Connect…</button>
+  <p class="sub" id="connectHint"></p>
+  <p class="sub">Or look at a keymap without the pad: <button class="btn small" type="button" data-open="folder">Open a folder…</button>
+    <button class="btn small" type="button" data-open="file">Open a file…</button></p>
+</main>
+
+<main id="startView" class="page start" hidden></main>
+<input type="file" id="pickFolder" webkitdirectory hidden>
+<input type="file" id="pickFile" accept=".json,application/json" hidden>
+
+<main id="editor" class="cols" hidden>
+  <section class="panel scroll" aria-label="Layers"><h3>Layers</h3><div id="pendingBox"></div><div id="drawAllBox"></div><div class="thumbs" id="thumbs"></div>
+    <div class="row"><button class="btn" type="button" id="addLayer">+ Add layer</button>
+      <button class="btn" type="button" data-share="loadLayer">Load layer…</button></div>
+    <div id="secretBox"></div></section>
+  <section class="center" aria-label="The pad's screen">
+    <div class="oled"><canvas id="screen" width="512" height="256" aria-label="The pad's screen: click a key to look at it"></canvas></div>
+    <div class="enc"><div class="knob" aria-hidden="true"></div><div class="encinfo" id="encInfo"></div></div>
+    <div class="sub">Click a key to edit it · click the top row (or Layer settings) for the layer and its encoder · Ctrl+Z undoes</div>
+  </section>
+  <section class="panel scroll" aria-label="The selected key" id="keyPanel"></section>
+</main>
+
+<main id="settingsView" class="page" hidden></main>
+<main id="filesView" class="page" hidden></main>
+<main id="playerView" class="page" hidden><h2>Player</h2>
+  <span class="sub">What the pad shows right now. Click a key and the pad presses it; the buttons switch its layer.</span>
+  <div id="playerCard" class="player panel"></div>
+  <div class="sub" id="playerSong"></div></main>
+<main id="spotifyView" class="page" hidden></main>
+<div id="spAsk" class="askbar" hidden role="alert"></div>
+<div id="toast" class="toast" hidden role="status"></div>
+<input type="file" id="sharePick" hidden>

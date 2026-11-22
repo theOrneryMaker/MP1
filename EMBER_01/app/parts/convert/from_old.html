@@ -1,0 +1,198 @@
+<script>
+// ─── Any old keymap -> Ember: finds which kind it is and goes through emberFromV3 (from_v3.html) ───
+// emberFromOld(files) with files = {path: text} (a pad's drive or a folder: keymap.json, layers/..., linkicons.json,
+// settings.json, keys/N.mp1key.json; or one keymap file as "keymap.json") -> {kind, keymap, layers, report, secrets,
+// settings}. kind: 'ember' (opened as it is), 'v3' (FIRMWARE_03/04), 'v2' (one file with a layers list), 'v1' (the
+// oldest: layer_names + keymap).
+//   secrets: the secret layers kept in the keymap itself (v1 / v2), as Ember layers: they become secret pages. (03/04
+//     keep theirs in secret.json, encrypted: secret.html converts it with the pad's key.)
+//   settings: an Ember settings.json from the old one's matching settings (settingsFromOld), or null.
+//   04's QUICK KEYS key files (keys/1-8.mp1key.json) become a layer called QUICK KEYS.
+
+function oldKind(index) {
+  if (!index || typeof index !== "object") return null;
+  if (index.ember === "keymap") return "ember";
+  if (index.version === 3) return "v3";
+  if (index.version === 2 && Array.isArray(index.layers)) return "v2";
+  if (!("version" in index) && (index.keymap || index.layer_names)) return "v1";
+  return null;
+}
+const oldJson = t => { if (typeof t !== "string") return t; const a = t.indexOf("{"), b = t.lastIndexOf("}"); return a < 0 ? null : JSON.parse(t.slice(a, b + 1)); };
+
+// FIRMWARE_04's version 1 -> 2 conversion (configurator/model.html), unchanged in what it does
+const V1_MEDIA = ["PLAYPAUSE", "NEXT", "PREV", "STOP", "FAST_FORWARD", "REWIND", "MUTE", "VOL_UP", "VOL_DN", "EJECT", "BRIGHTNESS_UP", "BRIGHTNESS_DOWN"];
+const V1_MEDIA_ALIASES = {PLAY_PAUSE: "PLAYPAUSE", VOL_DOWN: "VOL_DN", VOLUME_UP: "VOL_UP", VOLUME_INCREMENT: "VOL_UP",
+  VOLUME_DOWN: "VOL_DN", VOLUME_DECREMENT: "VOL_DN", PREVIOUS: "PREV", SCAN_PREVIOUS_TRACK: "PREV", SCAN_NEXT_TRACK: "NEXT"};
+const V1_ACTIONS = ["key", "combo", "text", "media", "url", "app", "scroll", "mouse", "click", "delay", "sequence", "tool"];
+const v1Media = n => { const u = String(n ?? "").toUpperCase(); return V1_MEDIA_ALIASES[u] || u; };
+function v1Keys() { return new Set(KEY_GROUPS.flatMap(g => g[1]).concat(["RETURN", "SPACEBAR", "WINDOWS", "LEFT_CONTROL", "LEFT_SHIFT", "LEFT_ALT", "LEFT_GUI"])); }
+function v1Action(raw, where, notes, keys) {
+  if (raw === null || raw === undefined) return null;
+  if (Array.isArray(raw)) return {combo: raw};
+  if (typeof raw === "string") {
+    if (/^https?:\/\//.test(raw)) return {url: raw};
+    if (raw.startsWith("win:")) return {app: raw.slice(4)};
+    if (V1_MEDIA.includes(v1Media(raw))) return {media: v1Media(raw)};
+    if (keys.has(raw.toUpperCase())) return {key: raw.toUpperCase()};
+    return {text: raw};
+  }
+  if (typeof raw === "object" && "type" in raw) {
+    const v = raw.value;
+    switch (raw.type) {
+      case "string": return {text: v};
+      case "key": return {key: v};
+      case "combo": return {combo: v};
+      case "url": return {url: v};
+      case "app": return {app: typeof v === "string" && v.startsWith("win:") ? v.slice(4) : v};
+      case "cc": return {media: v1Media(v)};
+      case "delay": return {delay: v};
+      case "sequence": return {sequence: (Array.isArray(v) ? v : []).map((s, i) => v1Action(s, `${where} step ${i + 1}`, notes, keys)).filter(Boolean)};
+    }
+  }
+  if (typeof raw === "object" && Object.keys(raw).some(f => V1_ACTIONS.includes(f))) return raw;
+  notes.push(`${where}: couldn't convert this action; left empty.`);
+  return null;
+}
+function v2FromV1(d, notes) {
+  const names = d.layer_names || [], keymap = d.keymap || [], keys = v1Keys();
+  const out = {version: 2, layers: []};
+  for (let i = 0; i < Math.max(names.length, keymap.length); i++) {
+    const name = names[i] || `LAYER${i + 1}`, layer = {name, keys: []};
+    if (i === d.default_layer) layer.default = true;
+    if (i === d.secret_layer && i !== d.default_layer) layer.secret = true;
+    for (let k = 0; k < 8; k++) {
+      const action = v1Action((keymap[i] || [])[k], `${name} key ${k + 1}`, notes, keys);
+      const icon = ((d.icons || [])[i] || [])[k] || "";
+      layer.keys.push(action || icon ? Object.assign(icon ? {icon} : {}, action || {}) : null);
+    }
+    const enc = {icon: (d.encoder_icons || [])[i] || ""}, ea = (d.encoder_actions || [])[i];
+    if (ea && ea.cc) {
+      const media = v1Media(ea.cc);
+      if (media === "VOL_UP" || media === "VOL_DN") {
+        Object.assign(enc, {cw: {media: "VOL_UP"}, ccw: {media: "VOL_DN"}, accel: true});
+        notes.push(`${name} encoder: volume now goes up when turned right (version 1 turned it down).`);
+      } else Object.assign(enc, {cw: {media}, ccw: {media}});
+    } else if (ea && ea.mouse_wheel) Object.assign(enc, {cw: {scroll: ea.mouse_wheel}, ccw: {scroll: -ea.mouse_wheel}, accel: true});
+    else if (ea && ea.combo) Object.assign(enc, {cw: {combo: ea.combo}, ccw: {combo: ea.combo_ccw || ea.combo}});
+    layer.encoder = enc;
+    out.layers.push(layer);
+  }
+  return out;
+}
+// version 2 (one file, a list of layers) -> the version 3 shape emberFromV3 reads
+function v3FromV2(d, notes, secrets) {
+  const index = {version: 3, layers: [], home: null}, layers = {};
+  d.layers.forEach((L, i) => {
+    if (!L || !L.name) return;
+    if (L.secret) {
+      if (secrets.length < 4) { secrets.push(L); notes.push(`${L.name}: a secret layer: now secret page ${secrets.length}.`); }
+      else notes.push(`${L.name}: a secret layer: left out (4 secret pages at most). It's still in the old file.`);
+      return;
+    }
+    const f = "layer-" + (i + 1) + ".json";
+    index.layers.push(f);
+    layers[f] = {layer: L};
+    if (L.default) index.home = L.name;
+  });
+  return {index, layers};
+}
+
+// one old layer (version 2 / 3 shape) -> an Ember layer, through the same converter
+function emberLayerFromOld(old, name) {
+  const r = emberFromV3({index: {version: 3, layers: ['s'], home: old.name}, layers: {s: {layer: Object.assign({}, old, {secret: undefined, default: undefined})}}, linkicons: null, settings: null});
+  const d = Object.values(r.layers)[0];
+  return d ? Object.assign(d, {name: d.name || name}) : null;
+}
+
+// The old firmware's settings -> Ember's, where Ember has one that means the same (checked against the pad's own
+// lists, padlists.html). [settings.json object or null, notes]
+const OLD_SETTING_NAMES = {gesture_single: 'click_single', gesture_double: 'click_double', gesture_triple: 'click_triple',
+  gesture_hold_cw: 'hold_turn_right', gesture_hold_ccw: 'hold_turn_left', led_scene: 'light_scene', led_color1: 'light_color1',
+  led_color2: 'light_color2', led_level: 'light_level', buzzer_level: 'sound_level', secret_timeout: 'secret_lock_seconds'};
+function settingOk(name, value) {
+  const s = PADLIST.settings[name];
+  if (!s) return false;
+  const a = s.allowed;
+  if (a === null) {
+    if (name === 'light_scene') return PADLIST.scenes.includes(value);
+    if (/^light_color/.test(name)) return value in PADLIST.colors;
+    return PADLIST.functions.some(f => f[0] === value);
+  }
+  if (a[0] === 'bits') return typeof value === 'string' && value.length === a[1] && /^[01]+$/.test(value);
+  if (a.length === 2 && typeof a[0] === 'number') return Number.isInteger(value) && value >= a[0] && value <= a[1];
+  return a.includes(value);
+}
+function settingsFromOld(old) {
+  if (!old || typeof old !== 'object' || old.ember === 'settings') return [null, []];
+  const out = {}, moved = [];
+  const put = (name, value) => { if (settingOk(name, value) && value !== PADLIST.settings[name].default) { out[name] = value; moved.push(name); } };
+  for (const [k, v] of Object.entries(old)) {
+    if (k in PADLIST.settings) put(k, v);
+    else if (OLD_SETTING_NAMES[k]) {
+      let v2 = v;
+      if (k.startsWith('gesture_') && v === 'layer_menu') v2 = 'layer_keys';
+      if (k === 'led_scene' && v === 'layer') v2 = 'static';
+      if (typeof v2 === 'string' && /^led_color/.test(k)) v2 = v2.toUpperCase();
+      put(OLD_SETTING_NAMES[k], v2);
+    }
+  }
+  if (['sound_keys', 'sound_layers', 'sound_startup'].some(k => k in old)) {     // (Boot, Layers, Keys, Alarms: 1 / 0)
+    put('sounds', [old.sound_startup, old.sound_layers, old.sound_keys, true].map(v => v ? '1' : '0').join(''));
+  }
+  const notes = [moved.length ? `Settings: ${moved.length} carried over (${moved.join(', ')}); the rest start at Ember's defaults.`
+                              : 'Settings: none of the old ones carry over; they start at Ember\'s defaults.'];
+  return [moved.length ? Object.assign({ember: 'settings'}, out) : null, notes];
+}
+
+// 04's QUICK KEYS key files -> one layer (or null)
+function quickKeysLayer(files, report) {
+  const keys = [];
+  let any = false;
+  for (let n = 1; n <= 8; n++) {
+    const t = files[`keys/${n}.mp1key.json`];
+    let k = null;
+    if (t != null) {
+      try { const o = oldJson(t), body = o && 'mp1_key' in o ? o.key : o; if (body) { k = emberKey(body, body.fa || '', null, `QUICK KEYS key ${n}`, []); any = true; } }
+      catch (e) { report.push(`keys/${n}.mp1key.json: couldn't be read, left out.`); }
+    }
+    keys.push(k);
+  }
+  if (!any) return null;
+  report.push('QUICK KEYS: its key files became a layer called QUICK KEYS.');
+  return {ember: 'layer', name: 'QUICK KEYS', keys, encoder: {label: ''}};
+}
+
+function emberFromOld(files) {
+  const index = oldJson(files["keymap.json"]);
+  const kind = oldKind(index);
+  if (!kind) throw new Error("keymap.json isn't a keymap this page knows (Ember, FIRMWARE_03/04, or the older one-file kinds).");
+  if (kind === "ember") {
+    const layers = {}, report = [];
+    for (const f of index.layers || []) {
+      const t = files["layers/" + f] ?? files[f];
+      if (t == null) report.push(`${f}: missing, left out.`); else layers[f] = oldJson(t);
+    }
+    return {kind, keymap: Object.assign({}, index, {layers: Object.keys(layers)}), layers, report};
+  }
+  const notes = [], oldSecrets = [];
+  let v3;
+  if (kind === "v3") {
+    const layers = {};
+    for (const f of index.layers || []) layers[f] = files["layers/" + f] ?? files[f] ?? null;
+    v3 = {index, layers};
+    // (secret.json: converted by the page with the pad's key, openold.html)
+  } else v3 = v3FromV2(kind === "v1" ? v2FromV1(index, notes) : index, notes, oldSecrets);
+  let settings = null;
+  try { settings = oldJson(files["settings.json"] || files["settings.js"] || "null"); } catch (e) { notes.push("settings.json couldn't be read: Ember's defaults."); }
+  const r = emberFromV3({index: v3.index, layers: v3.layers, linkicons: kind === "v3" ? (files["linkicons.json"] || null) : null, settings: kind === "v3" ? settings : null});
+  r.report = notes.concat(r.report);
+  const qk = quickKeysLayer(files, r.report);
+  if (qk && !Object.values(r.layers).some(L => L.name === "QUICK KEYS")) { r.layers["quick-keys.json"] = qk; r.keymap.layers.push("quick-keys.json"); }
+  r.secrets = oldSecrets.map((L, i) => emberLayerFromOld(L, "SECRET " + (i + 1))).filter(Boolean);
+  const [s, sn] = settingsFromOld(settings);
+  r.settings = s;
+  if (settings) r.report.push(...sn);
+  r.kind = kind;
+  return r;
+}
+</script>

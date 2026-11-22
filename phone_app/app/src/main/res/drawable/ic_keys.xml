@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the MP1 mark (as mp1.ico: orange / purple keys, gap tightened), inside the adaptive icon's 72 dp safe zone -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#D9661D" android:pathData="M31,26h15a5,5 0 0 1 5,5v15a5,5 0 0 1 -5,5h-15a5,5 0 0 1 -5,-5v-15a5,5 0 0 1 5,-5z" />
+    <path android:fillColor="#6B4FB8" android:pathData="M62,26h15a5,5 0 0 1 5,5v15a5,5 0 0 1 -5,5h-15a5,5 0 0 1 -5,-5v-15a5,5 0 0 1 5,-5z" />
+    <path android:fillColor="#6B4FB8" android:pathData="M31,57h15a5,5 0 0 1 5,5v15a5,5 0 0 1 -5,5h-15a5,5 0 0 1 -5,-5v-15a5,5 0 0 1 5,-5z" />
+    <path android:fillColor="#D9661D" android:pathData="M62,57h15a5,5 0 0 1 5,5v15a5,5 0 0 1 -5,5h-15a5,5 0 0 1 -5,-5v-15a5,5 0 0 1 5,-5z" />
+</vector>

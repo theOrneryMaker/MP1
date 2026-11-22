@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Raspberry Pi and Adafruit USB IDs (the MP1's CircuitPython) -->
+    <usb-device vendor-id="11914" />
+    <usb-device vendor-id="9114" />
+</resources>

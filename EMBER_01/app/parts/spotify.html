@@ -1,0 +1,326 @@
+<script>
+// ─── Spotify (step 7): the page asks Spotify what's playing and sends it to the pad's Spotify screen (nowplay.py) ───
+// From FIRMWARE_04's Spotify card (sign-in, renewal, the API calls), without the module system:
+//   pad -> page  {"t": "np", "open": true / false}       the screen opened / closed: asked every few seconds while open
+//                {"t": "np", "do": "like" | "shuffle" | "repeat" | "here" | "prev" | "play" | "next" | "mute" | "vol", "to", "local"}
+//   page -> pad  {"c": "np", title, artist, pos, len, playing, liked, shuffle, repeat, local, vol, device} / {none} / {msg}
+// "local": Spotify plays on THIS computer (a device name the user said yes to, kept in this browser): the pad then
+// uses the computer's media keys itself. Sign-in: Spotify's PKCE with the user's own Client ID (Spotify's rule),
+// kept in this browser under FIRMWARE_04's name ("mp1-card:spotify"), so both pages share one sign-in.
+const SP_KEY = 'mp1-card:spotify';
+const SP_SCOPES = 'user-read-currently-playing user-read-playback-state user-modify-playback-state user-library-read user-library-modify';
+const SP_CONTROL = ['user-modify-playback-state', 'user-library-modify'];
+const SP_OPEN_MS = 3000, SP_IDLE_MS = 10000, SP_VOLUME_MS = 400;
+const SP_TEST = [['Midnight Drive (Extended Mix)', 'The Neon Arcade', 214], ['Coffee & Keyboards', 'Lo-Fi Desk Club', 167], ['Señorita Café', 'Ünïcode Brass Band', 189]];
+const SP = {cfg: {}, open: false, timer: null, raw: null, track: null, liked: {}, song: null, device: null, renewing: null,
+    volWant: null, volSent: 0, volTimer: null, lastVol: null, testAt: 0, testSkip: 0, test: {shuffle: false, repeat: 'off', liked: false, paused: false, vol: 50},
+    ask: null, note: ''};
+
+function spLoad() { try { SP.cfg = JSON.parse(localStorage.getItem(SP_KEY)) || {}; } catch (e) { SP.cfg = {}; } return SP.cfg; }
+function spSave(data) {
+    const now = spLoad();                   // (another page, e.g. FIRMWARE_04's, may have changed it)
+    Object.assign(now, data);
+    SP.cfg = now;
+    try { localStorage.setItem(SP_KEY, JSON.stringify(now)); } catch (e) { /* private window: this visit only */ }
+}
+const spHere = () => SP.cfg.here || [];
+const spCanControl = () => SP_CONTROL.every(x => (SP.cfg.scope || '').includes(x));
+const spRedirect = () => SP.cfg.redirect || 'http://127.0.0.1:8888/callback';
+const spClean = (s, n) => String(s || '').replace(/[\u0000-\u001f]/g, '').slice(0, n || 80);
+
+// ── sign-in: PKCE (no secret), in a small window; the address it ends on is pasted back ──
+const b64url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+async function spSignIn() {
+    const client = $('spClient').value.trim(), redirect = $('spRedirect').value.trim();
+    if (!client) { SP.note = 'Paste your Client ID first (see First time).'; return renderSpotify(); }
+    const verifier = b64url(crypto.getRandomValues(new Uint8Array(48)));
+    const challenge = b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)));
+    const state = b64url(crypto.getRandomValues(new Uint8Array(12)));
+    spSave({client, redirect, verifier, state});
+    const q = new URLSearchParams({response_type: 'code', client_id: client, scope: SP_SCOPES, redirect_uri: redirect, code_challenge_method: 'S256', code_challenge: challenge, state});
+    window.open('https://accounts.spotify.com/authorize?' + q, 'mp1spotify', 'width=480,height=720');
+    SP.pasting = true;
+    SP.note = 'Sign in in the window that opened, then copy the address it ends on (even an error page) and paste it below.';
+    renderSpotify();
+}
+async function spFinish(text) {
+    let q;
+    try { q = new URL(String(text).trim()).searchParams; } catch (e) { q = new URLSearchParams(String(text).trim().replace(/^.*\?/, '')); }
+    if (q.get('error')) SP.note = 'Spotify said: ' + q.get('error');
+    else if (!q.get('code')) SP.note = 'That address has no sign-in code in it: copy the whole address from the sign-in window.';
+    else if (SP.cfg.state && q.get('state') && q.get('state') !== SP.cfg.state) SP.note = 'That address is from an older sign-in: click Sign in again.';
+    else if (await spToken({grant_type: 'authorization_code', code: q.get('code'), redirect_uri: SP.cfg.redirect, client_id: SP.cfg.client, code_verifier: SP.cfg.verifier})) {
+        SP.pasting = false; SP.note = 'Signed in.';
+        spSave({verifier: null, state: null});
+        spTick(true);
+    }
+    renderSpotify();
+}
+async function spToken(params) {
+    try {
+        const r = await fetch('https://accounts.spotify.com/api/token', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams(params)});
+        const j = await r.json();
+        if (!r.ok) {
+            const why = 'Spotify sign-in failed: ' + (j.error_description || j.error || r.status);
+            if (params.grant_type === 'refresh_token' && j.error === 'invalid_grant') spSave({access: null, refresh: null, expires: 0, error: why});
+            SP.note = why;
+            return false;
+        }
+        spSave({access: j.access_token, refresh: j.refresh_token || SP.cfg.refresh, expires: Date.now() + (j.expires_in - 60) * 1000, scope: j.scope || SP.cfg.scope || '', error: null});
+        return true;
+    } catch (e) { SP.note = 'Couldn\'t reach Spotify (' + (e.message || e) + '). A work network may block it.'; return false; }
+}
+// the access key lasts an hour; renewals one at a time (two at once can make Spotify cancel the sign-in)
+async function spAccess() {
+    spLoad();
+    if (!SP.cfg.refresh) return null;
+    if (SP.cfg.access && Date.now() < SP.cfg.expires) return SP.cfg.access;
+    if (!SP.renewing) SP.renewing = (async () => {
+        try {
+            spLoad();
+            if (SP.cfg.access && Date.now() < SP.cfg.expires) return SP.cfg.access;
+            return (await spToken({grant_type: 'refresh_token', refresh_token: SP.cfg.refresh, client_id: SP.cfg.client})) ? SP.cfg.access : null;
+        } finally { SP.renewing = null; }
+    })();
+    return SP.renewing;
+}
+async function spFetch(url, opts) {
+    const token = await spAccess();
+    if (!token) return null;
+    const r = await fetch(url, Object.assign({}, opts, {headers: Object.assign({Authorization: 'Bearer ' + token}, (opts || {}).headers || {})}));
+    if (r.status === 401) spSave({expires: 0});
+    return r;
+}
+
+// ── asking Spotify: every few seconds while the pad's screen (or this tab / the Player) is open ──
+const spWanted = () => SP.open || (!$('spotifyView').hidden) || (!$('playerView').hidden && Link.port);
+function spSend(d) {
+    SP.song = d;
+    if (SP.open && Link.port) Link.send(Object.assign({c: 'np'}, d));
+    renderSpotifyNow();
+}
+async function spTick(soon) {
+    clearTimeout(SP.timer);
+    SP.timer = null;
+    if (!spWanted()) return;
+    let next = SP.open ? SP_OPEN_MS : SP_IDLE_MS;
+    spLoad();
+    if (SP.cfg.test) {
+        if (!SP.testAt) SP.testAt = Date.now();
+        let i = 0, at = (Date.now() - SP.testAt) / 1000;
+        while (at >= SP_TEST[i % 3][2] / 6) { at -= SP_TEST[i % 3][2] / 6; i++; }      // (each test song "plays" a sixth of its length)
+        const s = SP_TEST[(((i + SP.testSkip) % 3) + 3) % 3];
+        SP.device = {name: 'Test songs', type: 'Computer'};
+        spSend({title: s[0], artist: s[1], playing: !SP.test.paused, pos: Math.round(at * 6), len: s[2], liked: SP.test.liked,
+            shuffle: SP.test.shuffle, repeat: SP.test.repeat, local: false, vol: SP.test.vol, device: 'Test songs'});
+        next = 2000;
+    } else if (!SP.cfg.refresh) spSend({msg: 'Sign in: page > Spotify'});
+    else {
+        try {
+            const r = await spFetch('https://api.spotify.com/v1/me/player?additional_types=episode');
+            if (!r) spSend({msg: 'Sign in: page > Spotify'});
+            else if (r.status === 204) { SP.raw = null; SP.device = null; spSend({none: true}); }
+            else if (r.status === 401) next = 1000;
+            else if (r.status === 429) next = Math.max(5, +r.headers.get('Retry-After') || 30) * 1000;
+            else if (!r.ok) spSend({msg: 'Spotify: error ' + r.status});
+            else {
+                const j = await r.json(), it = j.item;
+                SP.raw = j;
+                SP.device = j.device || null;
+                spAskHere();
+                const where = SP.device ? spClean(SP.device.name, 24) : '';
+                if (!it) spSend({none: true, device: where});
+                else {
+                    SP.track = it.uri || null;
+                    if (SP.track && SP.liked[SP.track] === undefined && spCanControl()) await spCheckLiked(SP.track);
+                    const d = SP.device, vol = d && d.supports_volume !== false && typeof d.volume_percent === 'number' && spCanControl() ? d.volume_percent : null;
+                    if (vol) SP.lastVol = vol;
+                    const pos = (j.progress_ms || 0) / 1000, len = (it.duration_ms || 0) / 1000;
+                    spSend({title: spClean(it.name), artist: spClean(it.artists ? it.artists.map(a => a.name).join(', ') : (it.show && it.show.name) || ''),
+                        playing: !!j.is_playing, pos: Math.round(pos), len: Math.round(len), liked: !!SP.liked[SP.track], shuffle: !!j.shuffle_state,
+                        repeat: j.repeat_state || 'off', local: spIsHere(d), vol, device: where});
+                    if (j.is_playing) next = Math.min(next, Math.max(1000, (len - pos) * 1000 + 800));     // (just after the song ends)
+                }
+            }
+        } catch (e) { spSend({msg: 'Spotify unreachable'}); }
+    }
+    if (soon) next = Math.min(next, soon === true ? next : soon);
+    if (spWanted()) SP.timer = setTimeout(() => spTick(false), next);
+}
+const spIsHere = d => !!d && spHere().includes(d.name);
+async function spCheckLiked(uri) {
+    try {
+        const r = await spFetch('https://api.spotify.com/v1/me/library/contains?uris=' + encodeURIComponent(uri));
+        if (r && r.ok) SP.liked[uri] = !!(await r.json())[0];
+    } catch (e) { /* shown without it */ }
+}
+// a computer this browser hasn't been asked about: "is that this computer?" (once per name)
+function spAskHere() {
+    const d = SP.device;
+    if (!d || d.type !== 'Computer' || spHere().includes(d.name) || (SP.cfg.notHere || []).includes(d.name)) { if (SP.ask && (!d || SP.ask !== d.name)) { SP.ask = null; spAskBar(); } return; }
+    if (SP.ask !== d.name) { SP.ask = d.name; spAskBar(); }
+}
+function spAnswerHere(yes) {
+    const name = SP.ask;
+    if (!name) return;
+    if (yes) spSave({here: spHere().filter(n => n !== name).concat([name])});
+    else spSave({notHere: (SP.cfg.notHere || []).filter(n => n !== name).concat([name])});
+    SP.ask = null;
+    spAskBar();
+    renderSpotify();
+    spTick(300);
+}
+function spAskBar() {
+    const bar = $('spAsk');
+    bar.hidden = !SP.ask;
+    if (SP.ask) bar.innerHTML = `<span>Spotify is playing on <b>${esc(SP.ask)}</b>. Is that this computer?</span>
+        <button class="btn small" type="button" data-sphere="1">Yes, this one</button><button class="btn small" type="button" data-sphere="0">No</button>`;
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-sphere]'); if (b) spAnswerHere(b.dataset.sphere === '1'); });
+
+// ── the pad's buttons, through Spotify (the music plays somewhere else) ──
+async function spDo(m) {
+    if (m.local) return spTick(400);       // (the pad sent the media key itself: just look again soon)
+    const what = m.do, fail = why => { SP.note = 'Spotify: ' + why; renderSpotify(); Link.send({c: 'np', msg: 'Spotify: ' + why}); setTimeout(() => spTick(true), 1500); };
+    if (SP.cfg.test) {
+        const t = SP.test;
+        if (what === 'like') t.liked = !t.liked;
+        else if (what === 'shuffle') t.shuffle = !t.shuffle;
+        else if (what === 'repeat') t.repeat = {off: 'context', context: 'track', track: 'off'}[t.repeat];
+        else if (what === 'play') t.paused = !t.paused;
+        else if (what === 'next' || what === 'prev') { SP.testSkip += what === 'next' ? 1 : -1; SP.testAt = Date.now(); }
+        else if (what === 'vol') t.vol = m.to;
+        else if (what === 'mute') t.vol = t.vol ? 0 : 50;
+        return spTick(200);
+    }
+    if (!SP.cfg.refresh) return fail('sign in first');
+    if (!spCanControl()) return fail('sign in again (for the buttons)');
+    if (what === 'here') return spPlayHere();
+    if (what === 'vol') return spVolume(m.to);
+    if (what === 'mute') {
+        const d = SP.device, v = d && typeof d.volume_percent === 'number' ? d.volume_percent : null;
+        if (v === null) return fail('volume: use the device');
+        if (v > 0) { SP.lastVol = v; return spVolume(0); }
+        return spVolume(SP.lastVol || 30);
+    }
+    const j = SP.raw || {};
+    let url, method = 'PUT';
+    if (what === 'like') {
+        if (!SP.track) return fail('nothing playing');
+        url = 'https://api.spotify.com/v1/me/library?uris=' + encodeURIComponent(SP.track);
+        method = SP.liked[SP.track] ? 'DELETE' : 'PUT';
+    } else if (what === 'shuffle') url = 'https://api.spotify.com/v1/me/player/shuffle?state=' + !j.shuffle_state;
+    else if (what === 'repeat') url = 'https://api.spotify.com/v1/me/player/repeat?state=' + ({off: 'context', context: 'track', track: 'off'}[j.repeat_state] || 'context');
+    else if (what === 'play') url = 'https://api.spotify.com/v1/me/player/' + (j.is_playing ? 'pause' : 'play');
+    else if (what === 'next' || what === 'prev') { url = 'https://api.spotify.com/v1/me/player/' + (what === 'next' ? 'next' : 'previous'); method = 'POST'; }
+    else return;
+    try {
+        const r = await spFetch(url, {method});
+        if (!r) return fail('sign in first');
+        if (r.status === 401) return fail('try again');
+        if (r.status === 403) return fail(what === 'like' ? 'not allowed' : 'needs Premium');
+        if (r.status === 404) return fail('no Spotify device open');
+        if (!r.ok) return fail('error ' + r.status);
+        if (what === 'like') SP.liked[SP.track] = method === 'PUT';
+        if (what === 'play' && SP.raw) SP.raw.is_playing = !SP.raw.is_playing;
+        spTick(what === 'next' || what === 'prev' ? 800 : 350);
+    } catch (e) { fail('unreachable'); }
+}
+// only the latest level goes to Spotify, at most every SP_VOLUME_MS
+function spVolume(n) {
+    SP.volWant = Math.max(0, Math.min(100, Math.round(+n) || 0));
+    if (!SP.volTimer) SP.volTimer = setTimeout(async () => {
+        SP.volTimer = null;
+        const v = SP.volWant;
+        SP.volWant = null;
+        SP.volSent = Date.now();
+        try {
+            const r = await spFetch('https://api.spotify.com/v1/me/player/volume?volume_percent=' + v, {method: 'PUT'});
+            if (r && r.status === 403) { Link.send({c: 'np', msg: 'Volume: use the device'}); setTimeout(() => spTick(true), 1500); }
+        } catch (e) { /* the next turn tries again */ }
+    }, Math.max(0, SP.volSent + SP_VOLUME_MS - Date.now()));
+}
+// Here: play on this computer (a device the user said is this one); none open: open Spotify here
+async function spPlayHere() {
+    let list = [];
+    try { const r = await spFetch('https://api.spotify.com/v1/me/player/devices'); if (r && r.ok) list = (await r.json()).devices || []; } catch (e) { /* none */ }
+    const d = list.find(x => x.id && spHere().includes(x.name) && !x.is_restricted);
+    if (d) {
+        try {
+            const r = await spFetch('https://api.spotify.com/v1/me/player', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({device_ids: [d.id], play: true})});
+            if (r && (r.ok || r.status === 202)) { SP.note = 'Playing on ' + d.name + '.'; renderSpotify(); return spTick(1000); }
+        } catch (e) { /* open it instead */ }
+    }
+    spOpenHere();
+}
+function spOpenHere() {
+    const how = SP.cfg.open || 'app';
+    let ok;
+    if (how === 'app') { const a = document.createElement('a'); a.href = 'spotify:'; a.click(); ok = true; }
+    else ok = !!window.open('https://open.spotify.com/', 'mp1-spotify');
+    Link.send({c: 'np', msg: ok ? 'Opening Spotify here' : 'Allow pop-ups for the page'});
+    SP.note = ok ? 'Opened Spotify on this computer: press Here again once it\'s up.' : 'The browser blocked the web player: allow pop-ups for this page (the address bar).';
+    renderSpotify();
+    setTimeout(() => spTick(true), 3000);
+}
+
+Link.on(m => {
+    if (m.t === 'np') {
+        if ('open' in m) { SP.open = !!m.open; if (SP.open) spTick(true); }
+        if (m.do) spDo(m);
+    } else if (m.t === 'closed') SP.open = false;
+    else if (m.t === 'hello') { SP.open = !!m.np; if (SP.open) spTick(true); }
+});
+
+// ── the Spotify tab ──
+function renderSpotify() {
+    const v = $('spotifyView');
+    if (!v || v.hidden) return;
+    spLoad();
+    const c = SP.cfg, signed = !!c.refresh;
+    v.innerHTML = `<h2>Spotify</h2>
+      <span class="sub">The pad's Spotify screen (double click by default) shows what Spotify is playing, on any device, and its keys control it.
+        This page asks Spotify every few seconds while that screen is open.</span>
+      <section class="panel"><h3>Sign-in</h3>
+        <div class="row"><span class="dot ${signed ? 'on' : ''}"></span><span>${signed ? (spCanControl() ? 'Signed in.' : 'Signed in, but sign in again so the pad\'s keys can control Spotify.') : (c.error ? esc(c.error) + '. Sign in again.' : 'Not signed in.')}</span></div>
+        <details${c.client ? '' : ' open'}><summary>First time: your Spotify key (about 5 minutes)</summary><ol class="sub">
+          <li>Go to <b>developer.spotify.com/dashboard</b>, log in (the account needs Premium) and click <b>Create app</b>.</li>
+          <li>Any name. Under <b>Redirect URIs</b> paste the address below, tick <b>Web API</b>, save.</li>
+          <li>Open the app's <b>Settings</b>, copy its <b>Client ID</b> and paste it below.</li></ol></details>
+        <div class="grid2"><label class="lbl" for="spClient">Client ID</label><input class="field" id="spClient" value="${esc(c.client || '')}" spellcheck="false" autocomplete="off">
+          <label class="lbl" for="spRedirect">Redirect URI</label><input class="field" id="spRedirect" value="${esc(spRedirect())}" spellcheck="false" autocomplete="off"></div>
+        <div class="row"><button class="btn main" type="button" id="spIn">${signed ? 'Sign in again' : 'Sign in to Spotify'}</button>
+          ${signed ? '<button class="btn" type="button" id="spOut">Sign out</button>' : ''}</div>
+        ${SP.pasting ? `<div class="row"><input class="field" id="spPaste" placeholder="The address the sign-in window ended on" style="flex:1"><button class="btn" type="button" id="spFinish">Finish</button></div>` : ''}
+        ${SP.note ? `<div class="msg">${esc(SP.note)}</div>` : ''}</section>
+      <section class="panel"><h3>This computer</h3>
+        <span class="sub">When Spotify plays on this computer, the pad uses the computer's own media keys and volume (instant). Anywhere else
+          (your phone, another PC, a speaker), its keys and the encoder go through Spotify. The page asks once for each computer it sees.</span>
+        <div class="row">${spHere().length ? spHere().map(n => `<span class="chip">${esc(n)} <button class="btn small" type="button" data-spforget="${esc(n)}" title="Not this computer">Forget</button></span>`).join('') : '<span class="sub">None yet: play something on this computer\'s Spotify.</span>'}</div>
+        <div class="row"><label for="spOpen">The pad's Here key, when Spotify isn't open on this computer, opens</label>
+          <select class="field" id="spOpen" style="width:auto"><option value="app"${(c.open || 'app') === 'app' ? ' selected' : ''}>the Spotify app</option><option value="web"${c.open === 'web' ? ' selected' : ''}>the web player</option></select></div></section>
+      <section class="panel"><h3>Now</h3><div id="spNow" class="sub"></div>
+        <label class="sub"><input type="checkbox" id="spTest"${c.test ? ' checked' : ''}> Test songs instead of Spotify (no sign-in needed)</label></section>`;
+    $('spClient').onchange = () => spSave({client: $('spClient').value.trim()});
+    $('spRedirect').onchange = () => spSave({redirect: $('spRedirect').value.trim()});
+    $('spIn').onclick = spSignIn;
+    if ($('spOut')) $('spOut').onclick = () => { spSave({access: null, refresh: null, expires: 0}); SP.note = 'Signed out.'; renderSpotify(); };
+    if ($('spFinish')) $('spFinish').onclick = () => spFinish($('spPaste').value);
+    $('spOpen').onchange = () => spSave({open: $('spOpen').value});
+    $('spTest').onchange = () => { spSave({test: $('spTest').checked}); SP.testAt = 0; spTick(true); };
+    v.querySelectorAll('[data-spforget]').forEach(b => b.onclick = () => { spSave({here: spHere().filter(n => n !== b.dataset.spforget)}); renderSpotify(); });
+    renderSpotifyNow();
+    spTick(true);
+}
+function spLine() {
+    const s = SP.song;
+    if (!s) return 'Not asked yet.';
+    if (s.msg) return s.msg;
+    if (s.none) return 'Nothing playing' + (s.device ? ' (on ' + s.device + ')' : '') + '.';
+    return `${s.playing ? '▶' : '❚❚'} ${s.title} – ${s.artist}${s.device ? ' · on ' + s.device : ''}${s.local ? ' (this computer)' : ''}`;
+}
+function renderSpotifyNow() {
+    if ($('spNow')) $('spNow').textContent = spLine();
+    if ($('playerSong')) $('playerSong').textContent = spLine();
+}
+</script>

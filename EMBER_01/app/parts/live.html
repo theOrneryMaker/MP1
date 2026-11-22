@@ -1,0 +1,167 @@
+<script>
+// ─── Live editing: every change goes to the pad at once (ember/link.py uses it and saves it) ───
+//   a key:          {"c": "key", "layer" | "hold": true, "k", "key"}  -> keyok
+//   a layer's own:  {"c": "layerset", "layer", "set": {encoder, lights, jiggle, num_lock: value or null}} -> layerok
+//   add / rename / reorder / delete: files written, then {"c": "reload"} (layeredit.html: restructure)
+// One change in flight at a time; a newer change to the same key (or layer field) replaces one still waiting.
+// Undo / redo send the old / new value the same way. Steps follow a layer by reference (LIVE.ref), so they
+// survive a rename or a reorder; a deleted layer's steps are dropped. Without a pad (a test), changes stay in the page.
+const LIVE = {busy: false, waiting: [], state: 'idle', note: '', undo: [], redo: []};
+
+const refOf = layerIndex => { const L = kmAll()[layerIndex]; return L.hold ? 'hold' : L; };
+const indexOf = ref => ref === 'hold' ? (kmHold() ? KM.layers.length : -1) : kmAll().indexOf(ref);
+
+function liveTarget(layerIndex) {
+    const L = kmAll()[layerIndex];
+    return L.hold ? {hold: true} : {layer: L.data.name};
+}
+// put a key into the page's keymap (null = empty)
+function setKeyLocal(layerIndex, k, key) {
+    const L = kmAll()[layerIndex];
+    const keys = L.hold ? KM.index.hold_keys : (L.data.keys || (L.data.keys = []));
+    while (keys.length < 8) keys.push(null);
+    keys[k] = key;
+}
+const keyOf = (layerIndex, k) => ((kmAll()[layerIndex].data.keys || [])[k]) || null;
+const clone = o => o == null ? null : JSON.parse(JSON.stringify(o));
+const fieldsOf = (layerIndex, names) => Object.fromEntries(names.map(f => [f, clone(kmAll()[layerIndex].data[f])]));
+
+// a change made in the editor: kept for undo (typing in one field joins one step), shown, sent
+function remember(step, joinWith) {
+    const last = LIVE.undo[LIVE.undo.length - 1];
+    if (joinWith && last && last.join === joinWith && last.ref === step.ref && last.k === step.k) last.after = step.after;
+    else LIVE.undo.push(Object.assign(step, {join: joinWith || null}));
+    if (LIVE.undo.length > 200) LIVE.undo.shift();
+    LIVE.redo = [];
+}
+function changeKey(layerIndex, k, key, joinWith) {
+    remember({ref: refOf(layerIndex), k, before: clone(keyOf(layerIndex, k)), after: clone(key)}, joinWith);
+    applyKey(layerIndex, k, key);
+}
+// fields: {encoder: {...}, lights: {...} or null, jiggle: true / null, ...}
+function changeLayer(layerIndex, fields, joinWith) {
+    remember({ref: refOf(layerIndex), k: 'set', before: fieldsOf(layerIndex, Object.keys(fields)), after: clone(fields)}, joinWith);
+    applyLayer(layerIndex, fields);
+}
+function applyKey(layerIndex, k, key) {
+    setKeyLocal(layerIndex, k, clone(key));
+    renderThumbs();
+    renderScreen();
+    queueSend(layerIndex, k);
+    liveBar();
+}
+function applyLayer(layerIndex, fields) {
+    const d = kmAll()[layerIndex].data;
+    for (const [f, v] of Object.entries(fields)) { if (v == null) delete d[f]; else d[f] = clone(v); }
+    renderThumbs();
+    renderScreen();
+    queueSend(layerIndex, 'set', Object.keys(fields));
+    liveBar();
+}
+function replay(step, value) {
+    const i = indexOf(step.ref);
+    if (i < 0) return false;                // (its layer was deleted)
+    SEL.layer = i;
+    if (step.k === 'set') { SEL.key = 'layer'; applyLayer(i, value); }
+    else { SEL.key = step.k; applyKey(i, step.k, value); }
+    keyPanel();
+    return true;
+}
+function undo() {
+    for (let step; (step = LIVE.undo.pop());) { if (replay(step, step.before)) { LIVE.redo.push(step); break; } }
+    liveBar();
+}
+function redo() {
+    for (let step; (step = LIVE.redo.pop());) { if (replay(step, step.after)) { LIVE.undo.push(step); break; } }
+    liveBar();
+}
+
+function queueSend(layerIndex, k, fields) {
+    const ref = refOf(layerIndex);
+    const old = LIVE.waiting.find(w => w.ref === ref && w.k === k);
+    if (old && fields) old.fields = [...new Set(old.fields.concat(fields))];
+    else if (!old) LIVE.waiting.push({ref, k, fields});
+    pump();
+}
+let liveAnswer = null;
+// The pad reads one Link line of up to 6 KB (link.py MAX_LINE). A change bigger than BIG_LINE (a long macro, e.g.
+// one made from a CSV) goes as the layer's whole file instead (sent in pieces), then the pad reads it again.
+const BIG_LINE = 5000;
+async function sendByFile(i) {
+    const L = kmAll()[i];
+    Link.send({c: 'sync', on: true});
+    try {
+        if (L.hold) await Link.writeText('keymap.json', JSON.stringify(KM.index));
+        else await Link.writeText('layers/' + L.file, JSON.stringify(L.data));
+        const answer = Link.waitFor(x => x.t === 'reloaded', 10000);
+        Link.send({c: 'reload', show: Link.pad && !Link.pad.hold ? Link.pad.layer : null});
+        const m = await answer;
+        if (!m) return {t: 'error', msg: 'The pad didn\'t answer.'};
+        return m.errors && m.errors.length ? {t: 'error', msg: m.errors.join('; ')} : {t: 'keyok', saved: true};
+    } catch (e) {
+        return {t: 'error', msg: e.message};
+    } finally {
+        Link.send({c: 'sync', on: false});
+    }
+}
+async function pump() {
+    if (LIVE.busy) return;
+    while (LIVE.waiting.length) {
+        const w = LIVE.waiting.shift(), i = indexOf(w.ref);
+        if (i < 0) continue;
+        if (!Link.port || KM.pending) { LIVE.state = 'offline'; LIVE.note = KM.pending ? 'Kept in the page until it is saved to the pad (Layers, top).' : 'Not connected: the change is kept in this page.'; LIVE.waiting = []; break; }
+        LIVE.busy = true;
+        LIVE.state = 'sending'; liveBar();
+        let msg;
+        if (w.k === 'set') {
+            const d = kmAll()[i].data, set = {};
+            for (const f of w.fields) set[f] = d[f] === undefined ? null : d[f];
+            msg = {c: 'layerset', layer: d.name, set};
+        } else msg = Object.assign({c: 'key', k: w.k, key: keyOf(i, w.k)}, liveTarget(i));
+        let m;
+        if (kmAll()[i].secret) m = await saveSecrets().catch(e => ({t: 'error', msg: e.message}));     // (a secret layer: the whole file, encrypted)
+        else if (JSON.stringify(msg).length > BIG_LINE) m = await sendByFile(i);      // (a big macro: more than one Link line holds)
+        else {
+            const answer = new Promise(resolve => { liveAnswer = resolve; setTimeout(() => resolve({t: 'error', msg: 'The pad didn\'t answer.'}), 6000); });
+            Link.send(msg);
+            m = await answer;
+        }
+        liveAnswer = null;
+        LIVE.busy = false;
+        liveResult(m);
+    }
+    liveBar();
+}
+function liveResult(m) {
+    if (m.t === 'keyok' || m.t === 'layerok' || m.t === 'reloaded') { LIVE.state = m.saved === false ? 'unsaved' : 'saved'; LIVE.note = ''; LIVE.at = Date.now(); }
+    else { LIVE.state = 'error'; LIVE.note = m.msg; }
+}
+Link.on(m => { if (liveAnswer && ['keyok', 'layerok', 'error'].includes(m.t)) liveAnswer(m); });
+// resolves once nothing is waiting or in flight (a restructure goes after the live changes)
+async function whenIdle() {
+    while (LIVE.busy || LIVE.waiting.length) await new Promise(r => setTimeout(r, 50));
+}
+
+function liveBar() {
+    const box = $('liveBar');
+    if (!box) return;
+    const words = {idle: 'Live: changes go to the pad as you make them.', sending: 'Sending to the pad…',
+        saved: 'Saved on the pad.' + (LIVE.note ? ' ' + LIVE.note : ''), unsaved: 'On the pad until it restarts: its drive is showing on a computer, so it couldn\'t save.',
+        error: 'The pad said no: ' + LIVE.note, offline: LIVE.note, warn: LIVE.note};
+    const color = {saved: 'on', sending: 'on'}[LIVE.state] || '';
+    box.innerHTML = `<span class="dot ${color}" style="${LIVE.state === 'error' ? 'background:var(--bad)' : ['unsaved', 'offline', 'warn'].includes(LIVE.state) ? 'background:var(--warn)' : ''}"></span>
+        <span style="flex:1">${esc(words[LIVE.state] || '')}</span>
+        <button class="btn" type="button" id="undoBtn" ${LIVE.undo.length ? '' : 'disabled'} title="Undo (Ctrl+Z)">Undo</button>
+        <button class="btn" type="button" id="redoBtn" ${LIVE.redo.length ? '' : 'disabled'} title="Redo (Ctrl+Y)">Redo</button>`;
+}
+document.addEventListener('click', e => {
+    if (e.target.id === 'undoBtn') undo();
+    else if (e.target.id === 'redoBtn') redo();
+});
+document.addEventListener('keydown', e => {
+    if (!(e.ctrlKey || e.metaKey) || $('editor').hidden || e.target.closest('input, textarea, select')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { undo(); e.preventDefault(); }
+    else if (k === 'y' || (k === 'z' && e.shiftKey)) { redo(); e.preventDefault(); }
+});
+</script>

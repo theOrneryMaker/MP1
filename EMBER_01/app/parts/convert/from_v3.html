@@ -1,0 +1,143 @@
+<script>
+// ─── Old keymaps -> Ember (see NOTES/KEYMAP_FORMAT.md) ───
+// emberFromV3({index, layers: {file: text or object}, linkicons, settings}) -> {keymap, layers: {file: object}, report: [lines]}
+// index = FIRMWARE_03/04 keymap.json {version: 3, layers: [files], home}; linkicons / settings may be null.
+// Pictures from web icons come out as {src} without bits: the page draws them (drawPics) before saving.
+// v1 keymaps go through FIRMWARE_04's own converter to v3 first.
+
+const EMBER_PIC_W = 29, EMBER_PIC_H = 24, EMBER_PIC_H_LABEL = 11;
+
+// a label made from an action, for keys that had none (or only symbols the font hasn't got)
+const EMBER_COMBO_NAMES = {C: "Copy", V: "Paste", X: "Cut", Z: "Undo", Y: "Redo", S: "Save", A: "Select All",
+  F: "Find", P: "Print", N: "New", O: "Open", W: "Close", T: "New Tab", R: "Reload", H: "Replace", B: "Bold",
+  I: "Italic", U: "Underline", K: "Link", D: "Delete", M: "Mute"};
+const EMBER_KEY_NAMES = {TAB: "Tab", ENTER: "Enter", RETURN: "Enter", ESCAPE: "Esc", BACKSPACE: "Back", DELETE: "Del",
+  SPACE: "Space", SPACEBAR: "Space", UP_ARROW: "Up", DOWN_ARROW: "Down", LEFT_ARROW: "Left", RIGHT_ARROW: "Right",
+  HOME: "Home", END: "End", PAGE_UP: "Page Up", PAGE_DOWN: "Page Down", PRINT_SCREEN: "PrtSc", INSERT: "Ins"};
+const EMBER_MEDIA_NAMES = {PREV: "Prev", NEXT: "Next", PLAYPAUSE: "Play", STOP: "Stop", EJECT: "Eject",
+  FAST_FORWARD: "FFwd", REWIND: "Rewind", MUTE: "Mute", VOL_UP: "Vol +", VOL_DN: "Vol -",
+  BRIGHTNESS_UP: "Bright +", BRIGHTNESS_DOWN: "Bright -"};
+const EMBER_MODS = {CONTROL: "Ctrl", LEFT_CONTROL: "Ctrl", RIGHT_CONTROL: "Ctrl", SHIFT: "Shift", LEFT_SHIFT: "Shift",
+  RIGHT_SHIFT: "Shift", ALT: "Alt", LEFT_ALT: "Alt", RIGHT_ALT: "AltGr", OPTION: "Alt", GUI: "Win", WINDOWS: "Win",
+  LEFT_GUI: "Win", RIGHT_GUI: "Win", COMMAND: "Win"};
+const EMBER_DIGITS = {ZERO: "0", ONE: "1", TWO: "2", THREE: "3", FOUR: "4", FIVE: "5", SIX: "6", SEVEN: "7", EIGHT: "8", NINE: "9"};
+
+function emberKeyName(k) { return EMBER_KEY_NAMES[k] || EMBER_DIGITS[k] || (k.length <= 3 ? k : k[0] + k.slice(1).toLowerCase().replace(/_/g, " ")); }
+function emberAutoLabel(a) {
+  if (!a) return "";
+  if (a.combo) {
+    const mods = a.combo.filter(k => EMBER_MODS[k]), rest = a.combo.filter(k => !EMBER_MODS[k]);
+    if (mods.length === 1 && EMBER_MODS[mods[0]] === "Ctrl" && rest.length === 1 && EMBER_COMBO_NAMES[rest[0]]) return EMBER_COMBO_NAMES[rest[0]];
+    return [...new Set(mods.map(m => EMBER_MODS[m]))].concat(rest.map(emberKeyName)).join(" ");
+  }
+  if (a.key) return emberKeyName(a.key);
+  if (a.media) return EMBER_MEDIA_NAMES[a.media] || a.media;
+  if (a.text != null) return "Text";     // (never the text itself: it may be a password, and the label shows on the pad)
+  if (a.open) { const m = /^https?:\/\/(?:www\.|play\.)?([^\/.]+)/i.exec(a.open); return m ? m[1][0].toUpperCase() + m[1].slice(1) : a.open.split(/[\\\/]/).pop().replace(/\.exe$/i, ""); }
+  if (a.scroll != null) return "Scroll";
+  if (a.mouse) return "Mouse";
+  if (a.click) return a.click[0].toUpperCase() + a.click.slice(1) + " Click";
+  if (a.sequence) return "Macro";
+  if (a.tool) return String(a.tool).replace(/^mod:/, "").replace(/[_-]/g, " ");
+  if (a.layer) return a.layer;
+  if (a.delay != null) return "Wait";
+  if (a.number) return a.number;
+  if (a.stamp) return "Date";
+  return "";
+}
+// the old pad label: keep the words, drop picked-icon characters and symbols the font hasn't got
+function emberOldLabel(s) {
+  if (typeof s !== "string") return "";
+  const t = [...s].filter(c => c >= " " && c <= "~").join("").trim();
+  return /[A-Za-z0-9]/.test(t) ? t : "";
+}
+// a hand-drawn picture (rows of "0"/"1"), trimmed to what's drawn -> {src: "drawn", w, h, bits (base64)}
+function emberPicFromRows(rows) {
+  let x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
+  rows.forEach((r, y) => [...r].forEach((c, x) => { if (c === "1") { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); } }));
+  if (x1 < 0) return null;
+  if (x1 - x0 + 1 > EMBER_PIC_W) { const cut = x1 - x0 + 1 - EMBER_PIC_W; x0 += cut >> 1; x1 = x0 + EMBER_PIC_W - 1; }
+  if (y1 - y0 + 1 > EMBER_PIC_H) y1 = y0 + EMBER_PIC_H - 1;
+  const w = x1 - x0 + 1, h = y1 - y0 + 1, bpr = (w + 7) >> 3, bytes = new Uint8Array(bpr * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (rows[y0 + y][x0 + x] === "1") bytes[y * bpr + (x >> 3)] |= 0x80 >> (x & 7);
+  return {src: "drawn", w, h, bits: emberB64(bytes)};
+}
+function emberB64(bytes) { let s = ""; for (const b of bytes) s += String.fromCharCode(b); return btoa(s); }
+
+const EMBER_ACTIONS = ["key", "combo", "text", "media", "scroll", "mouse", "click", "delay", "sequence", "tool"];
+function emberAction(old, where, report) {
+  if (!old || typeof old !== "object") return {};
+  const a = {};
+  for (const k of EMBER_ACTIONS) if (old[k] !== undefined) a[k] = old[k];
+  if (old.url !== undefined) a.open = old.url;
+  if (old.app !== undefined) a.open = old.app;
+  if (typeof a.tool === "string" && a.tool.startsWith("profile:")) { report.push(`${where}: a profile switch (profiles are gone): left without an action.`); delete a.tool; }
+  for (const k of ["repeat", "confirm"]) if (old[k]) a[k] = true;
+  return a;
+}
+// one key: label + optional picture + action
+function emberKey(old, web, drawn, where, report) {
+  if (old == null && !web && !drawn) return null;
+  old = old || {};
+  const action = emberAction(old, where, report);
+  let label = emberOldLabel(old.icon);
+  if (!label) { label = emberAutoLabel(action); if (label) report.push({auto: where.replace(/ key \d+$/, ""), label}); }
+  if (!label && old.icon) label = "-";
+  const key = {label};
+  if (drawn) { const p = emberPicFromRows(drawn); if (p) key.pic = p; }
+  else if (web) key.pic = {src: web};
+  return Object.assign(key, action);
+}
+
+function emberFromV3({index, layers, linkicons, settings}) {
+  const report = [], out = {}, parse = t => typeof t === "string" ? JSON.parse(t) : t;
+  index = parse(index);
+  if (!index || index.version !== 3 || !Array.isArray(index.layers)) throw new Error("Not a FIRMWARE_03/04 keymap (version 3).");
+  const li = (parse(linkicons) || {}).layers || {};
+  const names = [];
+  for (const file of index.layers) {
+    const raw = layers[file];
+    if (raw == null) { report.push(`${file}: missing, left out.`); continue; }
+    const L = (parse(raw) || {}).layer;
+    if (!L || !L.name) { report.push(`${file}: not a layer file, left out.`); continue; }
+    if (L.name === "MEDIA MODS") { report.push(`MEDIA MODS: left out (modules make their own layers in Ember).`); continue; }
+    const web = li[L.name] || {}, where = i => `${L.name} key ${i + 1}`;
+    const keys = [];
+    for (let i = 0; i < 8; i++) {
+      const icons = (web.keys || [])[i] || "", drawn = (web.px || [])[i] || null;
+      keys.push(emberKey((L.keys || [])[i], icons, drawn, where(i), report));
+    }
+    const layer = {ember: "layer", name: L.name};
+    if (web.layer) layer.pic = {src: web.layer};
+    layer.keys = keys;
+    if (L.encoder) {
+      const e = L.encoder, enc = {label: emberOldLabel(e.icon) || (e.cw && e.cw.media && /VOL/.test(e.cw.media) ? "Volume" : e.cw && e.cw.scroll != null ? "Scroll" : "Encoder")};
+      for (const k of ["cw", "ccw", "press"]) if (e[k]) enc[k] = emberAction(e[k], `${L.name} encoder`, report);
+      if (e.accel) enc.accel = true;
+      layer.encoder = enc;
+    }
+    for (const k of ["lights", "jiggle", "num_lock", "module_view"]) if (L[k] !== undefined) layer[k] = L[k];
+    if (L.on_open) report.push(`${L.name}: its on-open action (${emberAutoLabel(emberAction(L.on_open, L.name, []))}) is gone in Ember.`);
+    if (L.chords && L.chords.length) report.push(`${L.name}: ${L.chords.length} chord(s) left out (chords are gone in Ember).`);
+    const fname = L.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + ".json";
+    out[fname] = layer; names.push(fname);
+  }
+  const keymap = {ember: "keymap", layers: names, home: index.home || (names.length ? out[names[0]].name : "")};
+  const hold = [];
+  let any = false;
+  for (let i = 1; i <= 8; i++) {
+    const h = settings && settings["hold_key_" + i];
+    let k = null;
+    if (h && typeof h === "object") k = emberKey(h, h.fa || "", null, `HOLD+KEY ${i}`, report);
+    else if (typeof h === "string" && h !== "none") k = {label: emberAutoLabel({tool: h}), tool: h};
+    if (k) any = true;
+    hold.push(k);
+  }
+  if (any) keymap.hold_keys = hold;
+  // labels made from actions: one line per layer, for checking
+  const auto = {}, lines = [];
+  for (const r of report) if (typeof r === "object") (auto[r.auto] = auto[r.auto] || []).push(r.label); else lines.push(r);
+  for (const [where, labels] of Object.entries(auto)) lines.push(`${where}: labels made from the keys' actions (check them): ${labels.join(", ")}.`);
+  return {keymap, layers: out, report: lines};
+}
+</script>

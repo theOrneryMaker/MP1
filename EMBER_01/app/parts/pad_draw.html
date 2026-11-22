@@ -1,0 +1,152 @@
+<script>
+function $(id) { return document.getElementById(id); }
+// ─── The pad's screen, drawn exactly as the pad draws it: a copy of lib/ember/screen.py's rules, with
+// the same font table (font.html). Change one, change the other. ───
+const PAD = {W: 128, H: 64, STATUS_H: 10, CELL_W: 31, CELL_H: 26, ROW_Y: [11, 38], COL_X: [0, 32, 64, 96],
+             LINE: 10, PIC_H_LABEL: 11, KEY_LINES: ['grid', 'shelves', 'boxes', 'dotted']};
+const FONT_BITS = Uint8Array.from(FONT.BITS.match(/../g), h => parseInt(h, 16));
+const FONT_BPR = (FONT.ATLAS_W + 7) >> 3;
+const fontPx = (x, y) => (FONT_BITS[y * FONT_BPR + (x >> 3)] >> (7 - (x & 7))) & 1;
+
+function bitmap(w, h) { return {w, h, d: new Uint8Array(w * h)}; }
+function setPx(bm, x, y, v = 1) { if (x >= 0 && y >= 0 && x < bm.w && y < bm.h) bm.d[y * bm.w + x] = v; }
+function fill(bm, x0, y0, x1, y1, v) { for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) setPx(bm, x, y, v); }
+function glyphIndex(ch) {
+    const i = ch.codePointAt(0) - FONT.FIRST;
+    return i >= 0 && i < FONT.W.length ? i : '?'.charCodeAt(0) - FONT.FIRST;
+}
+function textWidth(s) {
+    if (!s) return 0;
+    let n = 0;
+    for (const c of s) n += FONT.W[glyphIndex(c)] + 1;
+    return n - 1;
+}
+function drawText(bm, x, y, s, rows = FONT.ROWS) {
+    for (const c of s) {
+        const i = glyphIndex(c), w = FONT.W[i];
+        if (x + w > bm.w) break;
+        if (c !== ' ')
+            for (let r = 0; r < rows; r++) for (let k = 0; k < w; k++) if (fontPx(FONT.X[i] + k, r)) setPx(bm, x + k, y + r);
+        x += w + 1;
+    }
+    return x;
+}
+function fitText(s, w) { while (s && textWidth(s) > w) s = [...s].slice(0, -1).join(''); return s; }
+function wrap2(label, w) {
+    const lines = [];
+    let cur = '';
+    for (const word of label.split(' ')) {
+        const t = cur ? cur + ' ' + word : word;
+        if (textWidth(t) <= w) cur = t;
+        else { if (cur) lines.push(cur); cur = word; }
+    }
+    if (cur) lines.push(cur);
+    return lines.slice(0, 2).map(l => fitText(l, w));
+}
+// a layer file's picture {w, h, bits: base64, (w + 7) >> 3 bytes a row} -> a bitmap, or null
+function pictureOf(pic) {
+    if (!pic || !pic.bits || !(pic.w > 0) || !(pic.h > 0)) return null;
+    let raw;
+    try { raw = Uint8Array.from(atob(pic.bits), c => c.charCodeAt(0)); } catch (e) { return null; }
+    const bpr = (pic.w + 7) >> 3, bm = bitmap(pic.w, pic.h);
+    if (raw.length < bpr * pic.h) return null;
+    for (let y = 0; y < pic.h; y++) for (let x = 0; x < pic.w; x++) if ((raw[y * bpr + (x >> 3)] >> (7 - (x & 7))) & 1) bm.d[y * pic.w + x] = 1;
+    return bm;
+}
+function blit(dst, src, x, y) { for (let j = 0; j < src.h; j++) for (let i = 0; i < src.w; i++) if (src.d[j * src.w + i]) setPx(dst, x + i, y + j); }
+function hline(bm, x0, x1, y, dotted) { for (let x = x0; x <= x1; x++) if (!dotted || !(x & 1)) setPx(bm, x, y); }
+function vline(bm, x, y0, y1, dotted) { for (let y = y0; y <= y1; y++) if (!dotted || !(y & 1)) setPx(bm, x, y); }
+function frame(bm, x0, y0, x1, y1, dotted) {
+    hline(bm, x0 + 1, x1 - 1, y0, dotted); hline(bm, x0 + 1, x1 - 1, y1, dotted);
+    vline(bm, x0, y0 + 1, y1 - 1, dotted); vline(bm, x1, y0 + 1, y1 - 1, dotted);
+}
+const fdiv = (a, b) => Math.floor(a / b);
+// one key's cell (31 x 26): the key-lines decoration, then picture + label, centred (screen.draw_key)
+function drawKey(label, pic, lines) {
+    const bm = bitmap(PAD.CELL_W, PAD.CELL_H);
+    let x = 0, y = 0, w = PAD.CELL_W, h = PAD.CELL_H;
+    if (lines === 'boxes' || lines === 'dotted') {
+        frame(bm, 0, 0, PAD.CELL_W - 1, PAD.CELL_H - 1, lines === 'dotted');
+        x = 1; y = 1; w = PAD.CELL_W - 2; h = PAD.CELL_H - 2;
+    } else if (lines === 'shelves') {
+        hline(bm, 3, PAD.CELL_W - 4, PAD.CELL_H - 1);
+        h = PAD.CELL_H - 1;
+    }
+    label = label || '';
+    if (pic) {
+        const alone = pic.h > PAD.PIC_H_LABEL || !label;
+        const text = alone ? '' : fitText(label, w);
+        const total = pic.h + (text ? PAD.LINE : 0);
+        const top = y + fdiv(h - total, 2);
+        blit(bm, pic, x + fdiv(w - pic.w, 2), top);
+        if (text) drawText(bm, x + fdiv(w - textWidth(text), 2), top + pic.h + 1, text);
+    } else {
+        const rows = wrap2(label, w);
+        const top = y + fdiv(h - (rows.length * PAD.LINE - 2), 2);
+        rows.forEach((t, i) => drawText(bm, x + fdiv(w - textWidth(t), 2), top + i * PAD.LINE, t));
+    }
+    return bm;
+}
+// the whole layer view (screen.show_layer): keys = 8 x {label, pic bitmap} or null
+function drawLayerView(name, encLabel, keys, lines = 'grid', lockBoxes = true) {
+    const bm = bitmap(PAD.W, PAD.H);
+    drawText(bm, 1, 1, name, FONT.CAPS);
+    const right = lockBoxes ? PAD.W - 19 - 4 : PAD.W;      // (the Caps / Num boxes' room; they light up on the pad)
+    const enc = fitText(encLabel || '', right - textWidth(name) - 8);
+    drawText(bm, right - textWidth(enc), 1, enc, FONT.CAPS);
+    if (lines === 'grid') {
+        hline(bm, 0, PAD.W - 1, PAD.STATUS_H, true);
+        for (const x of [31, 63, 95]) vline(bm, x, PAD.STATUS_H + 2, PAD.H - 1, true);
+        hline(bm, 0, PAD.W - 1, 37, true);
+    } else if (lines === 'shelves') hline(bm, 0, PAD.W - 1, PAD.STATUS_H);
+    for (let k = 0; k < 8; k++) {
+        const key = keys[k];
+        const cell = drawKey(key ? key.label : '', key ? key.pic : null, lines);
+        const cx = PAD.COL_X[k % 4], cy = PAD.ROW_Y[k >> 2];
+        for (let j = 0; j < PAD.CELL_H; j++) for (let i = 0; i < PAD.CELL_W; i++) bm.d[(cy + j) * PAD.W + cx + i] = cell.d[j * PAD.CELL_W + i];
+    }
+    return bm;
+}
+// a layer card (screen.show_card): its picture (up to 40 x 40) in the middle and the name below; with no picture,
+// the name double size (or normal size when that's too wide). left / right: the top row (HOME, 3/6).
+const CARD_AREA = [PAD.STATUS_H, PAD.H - FONT.ROWS - 1];
+function drawBig(bm, x, y, s) {
+    const w = textWidth(s), t = bitmap(Math.max(1, w), FONT.ROWS);
+    drawText(t, 0, 0, s);
+    for (let yy = 0; yy < FONT.ROWS; yy++) for (let xx = 0; xx < w; xx++) if (t.d[yy * t.w + xx]) fill(bm, x + 2 * xx, y + 2 * yy, x + 2 * xx + 2, y + 2 * yy + 2, 1);
+}
+function drawCard(name, pic, left = '', right = '') {
+    const bm = bitmap(PAD.W, PAD.H);
+    if (left) drawText(bm, 1, 1, left, FONT.CAPS);
+    if (right) drawText(bm, PAD.W - 1 - textWidth(right), 1, right, FONT.CAPS);
+    if (pic) {
+        const [y0, y1] = CARD_AREA;
+        blit(bm, pic, fdiv(PAD.W - pic.w, 2), y0 + fdiv(y1 - y0 - pic.h, 2));
+        const t = fitText(name, PAD.W - 2);
+        drawText(bm, fdiv(PAD.W - textWidth(t), 2), PAD.H - FONT.ROWS, t);
+    } else if (2 * textWidth(name) <= PAD.W - 4) {
+        drawBig(bm, fdiv(PAD.W - 2 * textWidth(name), 2), fdiv(PAD.H - 2 * FONT.ROWS, 2) + 2, name);
+    } else {
+        const t = fitText(name, PAD.W - 2);
+        drawText(bm, fdiv(PAD.W - textWidth(t), 2), fdiv(PAD.H - FONT.ROWS, 2) + 2, t);
+    }
+    return bm;
+}
+const keyRect = k => { const x = PAD.COL_X[k % 4], y = PAD.ROW_Y[k >> 2]; return [x, y, x + PAD.CELL_W - 1, y + PAD.CELL_H - 1]; };
+// paint a bitmap on a canvas S pixels per pad pixel (a hairline gap between lit pixels from 4x up)
+function paintBitmap(canvas, bm, S, selKey) {
+    canvas.width = bm.w * S; canvas.height = bm.h * S;
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#050607'; g.fillRect(0, 0, canvas.width, canvas.height);
+    if (S >= 4) { g.fillStyle = '#0c0f12'; for (let y = 0; y < bm.h; y++) for (let x = 0; x < bm.w; x++) if (!bm.d[y * bm.w + x]) g.fillRect(x * S, y * S, S - 1, S - 1); }
+    g.fillStyle = '#e9f5ff';
+    const gap = S >= 4 ? 1 : 0;
+    for (let y = 0; y < bm.h; y++) for (let x = 0; x < bm.w; x++) if (bm.d[y * bm.w + x]) g.fillRect(x * S, y * S, S - gap, S - gap);
+    if (selKey != null) {
+        const [x0, y0, x1, y1] = keyRect(selKey);
+        g.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--sel').trim() || '#c2410c';
+        g.lineWidth = Math.max(2, S * 0.6);
+        g.strokeRect(x0 * S + 1, y0 * S + 1, (x1 - x0 + 1) * S - 2, (y1 - y0 + 1) * S - 2);
+    }
+}
+</script>

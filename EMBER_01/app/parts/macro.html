@@ -1,0 +1,176 @@
+<script>
+// ─── Macros: the steps of a "sequence" key, edited one by one or recorded from the keyboard ───
+// A step is any action ({combo}, {key}, {text}, {delay}, {media}, {scroll}, {click}, {open}) with an optional
+// "times" (1-999, keymap.py MAX_TIMES). The key panel (keyedit.html) shows this form for the Macro kind;
+// box.dataset.seq holds the steps as JSON and commit() sends the key, live.
+const STEP_KINDS = [['keys', 'Keys'], ['text', 'Text'], ['delay', 'Wait'], ['media', 'Media'], ['mouse', 'Mouse'], ['open', 'Open']];
+const MAX_TIMES = 999;
+const REC = {on: false, keepPauses: false};
+let macroTimer = null;
+
+function stepKind(s) {
+    const a = actionOf(s);
+    if (!a) return 'keys';
+    return {key: 'keys', combo: 'keys', delay: 'delay', scroll: 'mouse', click: 'mouse', mouse: 'mouse'}[a.kind] || a.kind;
+}
+function stepFresh(kind) {
+    return {keys: {key: 'ENTER'}, text: {text: 'text'}, delay: {delay: 0.5}, media: {media: 'PLAYPAUSE'}, mouse: {click: 'left'}, open: {open: 'https://'}}[kind];
+}
+const macroSteps = () => JSON.parse($('fAction').dataset.seq || '[]');
+function setSteps(steps, join) {
+    $('fAction').dataset.seq = JSON.stringify(steps);
+    clearTimeout(macroTimer);
+    if (join) macroTimer = setTimeout(() => commit(join), 400);
+    else commit();
+}
+
+function macroForm(box, steps) {
+    box.dataset.seq = JSON.stringify(steps);
+    const sel = (cls, opts, value, n) => `<select class="field ${cls}" data-n="${n}" style="width:auto">${opts.map(([v, t]) =>
+        `<option value="${esc(v)}"${String(v) === String(value) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+    // a long macro (a CSV makes hundreds of steps): a short summary first; editing every step is one click away
+    const long = steps.length > LONG_MACRO && box.dataset.full !== '1';
+    const summary = () => `<div class="msg">${steps.length} steps · types in about ${Math.max(1, Math.round(steps.reduce((t, s) => t + (s.delay != null ? s.delay : s.text != null ? s.text.length * 0.012 : 0.02 * (s.times || 1)), 0)))} s
+        <div class="sub" style="margin-top:4px">${esc(steps.slice(0, 14).map(s => s.text != null ? '“' + s.text.slice(0, 24) + '”' : stepWord(s)).join(' · '))}${steps.length > 14 ? ' …' : ''}</div>
+        <div class="row" style="margin-top:8px"><button class="btn small" type="button" id="showSteps">Show all ${steps.length} steps to edit them</button></div></div>`;
+    box.innerHTML = long ? summary() + macroTools() : `<ol class="steps">${steps.map((s, n) => {
+        const kind = stepKind(s), a = actionOf(s);
+        let body = '';
+        if (kind === 'text') body = `<input class="field sText" data-n="${n}" value="${esc(a.value)}" placeholder="What it types">`;
+        else if (kind === 'delay') body = `<div class="row"><input class="field sDelay" data-n="${n}" type="number" min="0.05" max="60" step="0.05" value="${a.value}" style="width:90px"><span class="sub">seconds</span></div>`;
+        else if (kind === 'media') body = sel('sMedia', Object.entries(MEDIA_WORDS), a.value, n);
+        else if (kind === 'open') body = `<input class="field sOpen" data-n="${n}" value="${esc(a.value)}" placeholder="https://… or a program">`;
+        else if (kind === 'mouse') body = `<div class="row">${sel('sMouse', [['left', 'Left click'], ['right', 'Right click'], ['middle', 'Middle click'], ['up', 'Scroll up'], ['down', 'Scroll down']],
+            a.kind === 'click' ? a.value : a.kind === 'scroll' ? (a.value > 0 ? 'up' : 'down') : 'left', n)}${a.kind === 'scroll' ? `<input class="field sAmount" data-n="${n}" type="number" min="1" max="50" value="${Math.abs(a.value)}" style="width:70px">` : ''}</div>`;
+        else if (kind === 'keys' && a && !['key', 'combo'].includes(a.kind)) { const d = describe(s); body = `<span class="sub">${esc(d[0] + (d[2] ? ': ' + d[2] : ''))}</span>`; }
+        else body = `<div class="sKeys" data-n="${n}"></div>`;
+        return `<li class="step"><div class="row">${sel('sKind', STEP_KINDS, kind, n)}
+              ${kind === 'delay' ? '' : `<label class="sub times" title="Run this step this many times">× <input class="field sTimes" data-n="${n}" type="number" min="1" max="${MAX_TIMES}" value="${s.times || 1}"></label>`}
+              <span class="stepbtns"><button class="btn small" type="button" data-sup="${n}" ${n ? '' : 'disabled'} title="Move up">↑</button>
+              <button class="btn small" type="button" data-sdown="${n}" ${n < steps.length - 1 ? '' : 'disabled'} title="Move down">↓</button>
+              <button class="btn small" type="button" data-sdel="${n}" title="Remove this step">Remove</button></span></div>${body}</li>`;
+    }).join('')}</ol>
+        ${steps.length ? '' : '<div class="sub">No steps yet: record some, build them from a CSV, or add them one by one.</div>'}` + macroTools();
+    if (long) {
+        $('showSteps').onclick = () => { box.dataset.full = '1'; macroForm(box, macroSteps()); };
+        wireMacroTools(box);
+        return;
+    }
+
+    // each step's own fields
+    const at = el => +el.dataset.n, steps2 = () => macroSteps();
+    const put = (n, step, join) => { const l = steps2(); l[n] = Object.assign(step, l[n].times > 1 && stepKind(step) !== 'delay' ? {times: l[n].times} : {}); setSteps(l, join); };
+    box.querySelectorAll('.sKind').forEach(el => el.onchange = () => { put(at(el), stepFresh(el.value)); macroForm(box, steps2()); });
+    box.querySelectorAll('.sText').forEach(el => el.oninput = () => { if (el.value) put(at(el), {text: el.value}, 'mtext' + at(el)); });
+    box.querySelectorAll('.sOpen').forEach(el => el.oninput = () => { if (el.value.trim()) put(at(el), {open: el.value.trim()}, 'mopen' + at(el)); });
+    box.querySelectorAll('.sDelay').forEach(el => el.onchange = () => { const v = Math.round(Math.max(0.05, Math.min(60, +el.value || 0.5)) * 100) / 100; el.value = v; put(at(el), {delay: v}); });
+    box.querySelectorAll('.sMedia').forEach(el => el.onchange = () => put(at(el), {media: el.value}));
+    box.querySelectorAll('.sMouse, .sAmount').forEach(el => el.onchange = () => {
+        const n = at(el), m = box.querySelector(`.sMouse[data-n="${n}"]`).value, amt = box.querySelector(`.sAmount[data-n="${n}"]`);
+        const k = Math.max(1, Math.min(50, parseInt(amt ? amt.value : 1, 10) || 1));
+        put(n, m === 'up' || m === 'down' ? {scroll: m === 'up' ? k : -k} : {click: m});
+        macroForm(box, steps2());
+    });
+    box.querySelectorAll('.sTimes').forEach(el => el.onchange = () => {
+        const n = at(el), v = Math.max(1, Math.min(MAX_TIMES, parseInt(el.value, 10) || 1)), l = steps2();
+        el.value = v;
+        if (v > 1) l[n].times = v; else delete l[n].times;
+        setSteps(l);
+    });
+    box.querySelectorAll('.sKeys').forEach(el => {
+        const n = at(el), s = steps[n], list = s.combo ? s.combo.slice(0, 4) : s.key ? [s.key] : [];
+        comboPicker(el, list, l => { if (!l.length) return; put(n, l.length === 1 ? {key: l[0]} : {combo: l}); macroForm(box, steps2()); }, true);
+    });
+    box.querySelectorAll('[data-sup],[data-sdown],[data-sdel]').forEach(b => b.onclick = () => {
+        const l = steps2(), n = +(b.dataset.sup ?? b.dataset.sdown ?? b.dataset.sdel);
+        if (b.dataset.sdel != null) l.splice(n, 1);
+        else { const m = b.dataset.sup != null ? n - 1 : n + 1; [l[n], l[m]] = [l[m], l[n]]; }
+        setSteps(l);
+        macroForm(box, steps2());
+    });
+    wireMacroTools(box);
+}
+const LONG_MACRO = 40;                      // more steps than this: a summary first (a full editor for hundreds is slow)
+// under the steps: add a step, record, build from a CSV
+function macroTools() {
+    return `<div class="row"><select class="field" id="addStep" style="width:auto"><option value="">+ Add a step…</option>${STEP_KINDS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>
+          <button class="btn" type="button" id="recBtn">${REC.on ? 'Stop recording' : 'Record…'}</button>
+          <button class="btn" type="button" id="csvBtn">From a CSV…</button>
+          <label class="sub"><input type="checkbox" id="recPauses"${REC.keepPauses ? ' checked' : ''}> keep pauses as waits</label></div>
+        <div id="recHint" class="sub">${REC.on ? '<b>Recording:</b> type on the keyboard. Click Stop recording when done.' : 'Record adds what you type to the end. The browser can\'t catch a few keys (Win, Alt+Tab, Ctrl+W): add those with Add a step.'}</div>`;
+}
+function wireMacroTools(box) {
+    $('addStep').onchange = () => { const l = macroSteps(); l.push(stepFresh($('addStep').value)); setSteps(l); macroForm(box, macroSteps()); };
+    $('recPauses').onchange = () => { REC.keepPauses = $('recPauses').checked; };
+    $('recBtn').onclick = () => REC.on ? recordStop(box) : recordStart(box);
+    $('csvBtn').onclick = () => csvBuilder(box, '');
+}
+
+// ─── recording: keyboard -> steps ───
+// Letters, numbers, symbols and space typed without Ctrl / Alt / Win join into one Text step; anything else
+// (Enter, arrows, a shortcut) is a Keys step; the same Keys step again counts up its times; a modifier pressed
+// and let go alone is a step of its own (e.g. Win). Pauses (with "keep pauses") become Wait steps.
+let recDown = null, recUp = null;
+function recordStart(box) {
+    REC.on = true;
+    REC.steps = [];
+    REC.held = new Set();
+    REC.alone = null;                       // a modifier pressed with nothing else (yet)
+    REC.last = 0;
+    macroForm(box, macroSteps());
+    $('recBtn').classList.add('main');
+    const MODS = {CONTROL: 1, SHIFT: 1, ALT: 1, GUI: 1, RIGHT_CONTROL: 1, RIGHT_SHIFT: 1, RIGHT_ALT: 1, RIGHT_GUI: 1};
+    const pause = () => {
+        const now = performance.now();
+        if (REC.keepPauses && REC.last && now - REC.last > 300) REC.steps.push({delay: Math.min(10, Math.round((now - REC.last) / 100) / 10)});
+        REC.last = now;
+    };
+    const push = step => {
+        const prev = REC.steps[REC.steps.length - 1];
+        const same = prev && JSON.stringify(Object.assign({}, prev, {times: undefined})) === JSON.stringify(step);
+        if (same && !step.text) prev.times = Math.min(MAX_TIMES, (prev.times || 1) + 1);
+        else REC.steps.push(step);
+        $('recHint').innerHTML = '<b>Recording:</b> ' + esc(REC.steps.map(s => { const d = describe(s); return (d[1].length ? d[1].join('+') : d[2] || d[0]) + (s.times > 1 ? ' ×' + s.times : ''); }).join(' · ').slice(-160)) + ' <span class="sub">(click Stop recording when done)</span>';
+    };
+    recDown = e => {
+        if (e.target.closest && e.target.closest('#recBtn')) return;
+        e.preventDefault(); e.stopPropagation();
+        if (e.repeat) return;
+        const name = codeToKey(e.code);
+        if (!name) return;
+        if (MODS[name]) { REC.held.add(name); REC.alone = name; return; }
+        REC.alone = null;
+        pause();
+        const mods = [...REC.held].map(m => MOD_OF[m] === m ? m : m), real = mods.filter(m => !/SHIFT/.test(m));
+        if (!real.length && e.key.length === 1) {               // a character: joins the Text step before it
+            const prev = REC.steps[REC.steps.length - 1];
+            if (prev && prev.text != null && !prev.times) prev.text += e.key; else push({text: e.key});
+            push.call(null, REC.steps.pop());                   // (redraw the hint)
+            return;
+        }
+        const list = mods.concat([name]);
+        push(list.length === 1 ? {key: name} : {combo: list});
+    };
+    recUp = e => {
+        if (e.target.closest && e.target.closest('#recBtn')) return;
+        e.preventDefault(); e.stopPropagation();
+        const name = codeToKey(e.code);
+        if (name && MODS[name]) {
+            REC.held.delete(name);
+            if (REC.alone === name) { pause(); push({key: name}); }
+            REC.alone = null;
+        }
+    };
+    document.addEventListener('keydown', recDown, true);
+    document.addEventListener('keyup', recUp, true);
+}
+function recordStop(box) {
+    document.removeEventListener('keydown', recDown, true);
+    document.removeEventListener('keyup', recUp, true);
+    REC.on = false;
+    const l = macroSteps().concat(REC.steps || []);
+    REC.steps = [];
+    if (l.length) setSteps(l);
+    macroForm(box, l);
+}
+</script>

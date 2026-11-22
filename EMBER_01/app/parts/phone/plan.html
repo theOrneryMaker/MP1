@@ -1,0 +1,120 @@
+<script>
+// ─── The full update's plan: the pad's own files (read over its console) -> the new drive, for Ember ───
+// planEmber(pkg, userFiles {path: bytes}, userDirs [path], uid hex, now) -> {files [{path, data} | {path, dir}], notes,
+// kind, layers, pages, undrawn}. From any firmware (00-04, or Ember itself):
+//   - the old firmware's own files go (they're in the phone's backup): EMBER_FW_TOP below
+//   - an old keymap is converted (from_old.html: layers, HOLD+KEY, QUICK KEYS, the settings Ember has too); the old
+//     files are kept on the pad in old_keymap_<date>/ with a REPORT.txt, as the page's Convert it does
+//   - secret layers (secret.json, or in a version 1 / 2 keymap) become secret pages, encrypted to this pad's chip
+//   - wiring.py becomes wiring.json; stock start-up pictures go (Ember has its own); everything else is kept
+//   - an Ember pad keeps its files as they are (only the firmware and the page are new)
+// Pictures from web icons come out undrawn ({src}): the pad shows the label until the page on a computer draws them.
+const EMBER_FW_TOP = ['lib', 'toolkit', 'app', 'modules', 'icons', 'backups', 'profiles', 'scenes', 'tests', 'starter_keymap',
+    'code.py', 'boot.py', 'boot_out.txt', 'default.json', 'clock.json', 'help.html', 'mp1.html', 'mp1_configurator.html', 'theme.css',
+    'mp1_phone.html', 'wiring_editor.html', 'mp1 ember.html', 'system volume information', '.fseventsd', '.trashes',
+    '.metadata_never_index', 'lost.dir'];     // (lost.dir: Android's, added to any drive a phone mounts)
+const isFirmwarePath = path => EMBER_FW_TOP.includes(path.split('/')[0].toLowerCase());
+const OLD_KEYMAP_FILE = /^(keymap\.json|keymap\.js|settings\.json|settings\.js|linkicons\.json|secret\.json|layers\/[^/]+|keys\/[1-8]\.mp1key\.json)$/i;
+const OLD_BAK = /^(keymap|settings|secret|linkicons)\.json\.bak$/i;
+const KIND_NAMES = {v3: 'FIRMWARE_03 / 04', v2: 'an older one-file keymap (version 2)', v1: 'the first keymap kind (version 1)'};
+
+async function planEmber(pkg, userFiles, userDirs, uid, now = new Date()) {
+    const notes = [], text = b => new TextDecoder().decode(b), bytes = s => new TextEncoder().encode(s);
+    const mine = {}, gone = new Set();
+    for (const [p, b] of Object.entries(userFiles)) {
+        if (isFirmwarePath(p)) { if (!p.startsWith('.') && !/^system volume/i.test(p)) gone.add(p.split('/')[0]); } else mine[p] = b;
+    }
+    let dirs = userDirs.filter(d => !isFirmwarePath(d));
+    const find = name => Object.keys(mine).find(p => p.toLowerCase() === name) || null;
+    // the stock start-up pictures (Ember has its own built in); your own stay
+    for (const p of Object.keys(mine)) {
+        const m = /^boot\/(boot|startup)\.bmp$/i.exec(p);
+        if (m && await sha1(mine[p]) === STOCK_BOOT[m[1].toLowerCase() + '.bmp']) delete mine[p];
+    }
+    // wiring.py -> wiring.json
+    const wpy = find('wiring.py');
+    if (wpy && !find('wiring.json')) {
+        const w = wiringFromPy(text(mine[wpy]));
+        if (w) { mine['wiring.json'] = bytes(JSON.stringify(Object.assign({board: pkg.info.board}, w), null, 2) + '\n'); delete mine[wpy]; notes.push('wiring.py (old format) became wiring.json.'); }
+        else notes.push('wiring.py couldn\'t be read with confidence: Ember uses the standard pins. Check the pad, then fix wiring.json.');
+    }
+    // the keymap
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+    const oldDir = 'old_keymap_' + stamp;
+    const keepOld = paths => { for (const p of paths) { mine[oldDir + '/' + p] = mine[p]; delete mine[p]; } };
+    let kind = null, r = null, layers = 0, pages = 0;
+    const km = find('keymap.json') || find('keymap.js');
+    if (km) {
+        const files = {};
+        for (const p of Object.keys(mine)) if (OLD_KEYMAP_FILE.test(p) && !/^secret\.json$/i.test(p)) files[p === km ? 'keymap.json' : p.replace(/^settings\.js$/i, 'settings.js')] = text(mine[p]);
+        try { r = emberFromOld(files); kind = r.kind; }
+        catch (e) { notes.push('keymap: ' + e.message + ' It\'s kept as it is (the pad shows the problem).'); }
+    }
+    let report = [];
+    if (r && r.kind !== 'ember') {
+        keepOld(Object.keys(mine).filter(p => OLD_KEYMAP_FILE.test(p)));
+        for (const p of Object.keys(mine)) if (OLD_BAK.test(p)) delete mine[p];
+        dirs = dirs.filter(d => !/^(layers|keys)$/i.test(d));
+        mine['keymap.json'] = bytes(JSON.stringify(r.keymap));
+        for (const [f, d] of Object.entries(r.layers)) mine['layers/' + f] = bytes(JSON.stringify(d));
+        if (r.settings) mine['settings.json'] = bytes(JSON.stringify(r.settings));
+        layers = r.keymap.layers.length;
+        notes.push(`Keymap: converted from ${KIND_NAMES[r.kind] || r.kind}: ${Object.values(r.layers).map(L => L.name).join(', ')} (home ${r.keymap.home}). The old files are kept on the pad in ${oldDir}/.`);
+        report = r.report;
+        notes.push(...r.report);
+    } else if (r) {
+        layers = (r.keymap.layers || []).length;
+        notes.push('Keymap: already Ember, kept as it is.');
+    } else if (!km) {
+        mine['keymap.json'] = bytes(JSON.stringify({ember: 'keymap', layers: ['main.json'], home: 'MAIN'}));
+        mine['layers/main.json'] = bytes(JSON.stringify({ember: 'layer', name: 'MAIN', keys: [null, null, null, null, null, null, null, null],
+            encoder: {label: 'Volume', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}}));
+        layers = 1;
+        notes.push('No keymap on the pad: Ember starts with one empty layer, MAIN.');
+    }
+    // the secret pages: secret.json (old: converted with this pad's key) and the keymap's own (version 1 / 2)
+    const sjOld = mine[oldDir + '/secret.json'] ? oldDir + '/secret.json' : null, sj = sjOld || find('secret.json');
+    const list = [];
+    let rewrite = !!(r && r.secrets && r.secrets.length);
+    if (sj) {
+        try {
+            const opened = await secretOpen(text(mine[sj]), secretKeyFromUid(uid));
+            for (const d of opened) {
+                if (!d || list.length >= MAX_SECRET) continue;
+                if (d.ember !== 'layer') rewrite = true;
+                const L = secretFromOld(d, list.length + 1);
+                if (L) list.push(L);
+            }
+        } catch (e) {
+            notes.push(`Secret layers: secret.json can't be opened with this pad's chip (made on another pad?): ${sjOld ? 'kept in ' + oldDir + '/' : 'left as it is'}.`);
+        }
+    }
+    for (const d of (r && r.secrets) || []) if (list.length < MAX_SECRET) list.push(d);
+    if (rewrite && list.length) {
+        if (!sjOld && sj) { mine[oldDir + '/secret.json'] = mine[sj]; }
+        mine['secret.json'] = bytes(await secretText(list, secretKeyFromUid(uid)));
+        notes.push(`Secret pages: ${list.length} (${list.map((L, i) => 'page ' + (i + 1) + ' ' + L.name).join(', ')}), kept encrypted to this pad.`);
+    }
+    pages = list.length;
+    if (mine[oldDir + '/keymap.json'] || mine[oldDir + '/secret.json']) {
+        mine[oldDir + '/REPORT.txt'] = bytes(`Converted to Ember by the MP1 phone app on ${now.toLocaleString()}:\n` + notes.map(l => '- ' + l).join('\n') + '\n');
+    }
+    if (gone.size) notes.push(`The old firmware's own files are gone (they're in the phone's backup): ${[...gone].sort().join(', ')}.`);
+    // pictures not drawn yet
+    let undrawn = 0;
+    for (const [p, b] of Object.entries(mine)) if (/^layers\/[^/]+\.json$/i.test(p)) {
+        try {
+            const L = JSON.parse(text(b));
+            for (const k of (L.keys || []).concat([L])) if (k && k.pic && k.pic.src && !k.pic.bits) undrawn++;
+        } catch (e) { /* not ours */ }
+    }
+    if (undrawn) notes.push(`${undrawn} key picture${undrawn > 1 ? 's' : ''} from web icons aren't drawn yet: the keys show their labels until you open MP1 Ember.html on a computer and click Draw icons.`);
+    // the drive: the package's files, then yours
+    const out = pkg.drive.map(f => ({path: f.path, data: f.data}));
+    const taken = new Set(out.map(f => f.path.toLowerCase()));
+    for (const [path, data] of Object.entries(mine)) if (!taken.has(path.toLowerCase())) out.push({path, data});
+    for (const d of dirs) out.push({path: d, dir: true});
+    for (const m of ['.metadata_never_index', '.Trashes', '.fseventsd/no_log']) out.push({path: m, data: new Uint8Array(0)});
+    return {files: out, notes, kind, layers, pages, undrawn, report};
+}
+</script>

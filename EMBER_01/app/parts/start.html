@@ -1,0 +1,115 @@
+<script>
+// ─── The views (top bar): Keys (the editor), Settings, Files. Shown once a keymap is loaded. ───
+let VIEW = 'editor';
+function showView(v) {
+    if (v) VIEW = v;
+    for (const id of ['editor', 'settingsView', 'filesView', 'playerView', 'spotifyView']) $(id).hidden = !v || id !== VIEW;
+    document.querySelectorAll('[data-view]').forEach(b => { b.classList.toggle('on', b.dataset.view === VIEW); b.setAttribute('aria-current', b.dataset.view === VIEW ? 'page' : 'false'); });
+    if (!v) return;
+    $('startView').hidden = true;
+    if (VIEW === 'editor') renderEditor();
+    else if (VIEW === 'settingsView') renderSettings();
+    else if (VIEW === 'playerView') { renderPlayer(); renderSpotifyNow(); spTick(true); }
+    else if (VIEW === 'spotifyView') renderSpotify();
+    else filesOpen();
+}
+let startArgs = null;                       // the start screen showing (openold.html), to go back to from Keys
+let helpOver = null;                        // Help shows over whatever was showing (it works without a pad): what to bring back
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
+    const v = b.dataset.view;
+    if (v === 'helpView') {
+        if (helpOver) return;
+        helpOver = ['noPad', 'startView', 'editor', 'settingsView', 'filesView', 'playerView', 'spotifyView'].filter(id => !$(id).hidden);
+        helpOver.forEach(id => { $(id).hidden = true; });
+        $('helpView').hidden = false;
+        document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('on', x === b));
+        return;
+    }
+    if (helpOver) {
+        $('helpView').hidden = true;
+        const back = helpOver;
+        helpOver = null;
+        if (back.includes('noPad') || back.includes('startView')) {
+            back.forEach(id => { $(id).hidden = false; });
+            if (back.includes('noPad')) { VIEW = v; showView(null); $('noPad').hidden = false; return; }
+        }
+    }
+    if (!$('noPad').hidden) { VIEW = v; showView(null); return; }
+    if (v === 'editor' && startArgs && !(KM.index && KM.index.ember === 'keymap')) { VIEW = v; showStart(...startArgs); return; }
+    showView(v);
+}));
+
+// ─── Start: connect (by itself when this page was allowed a port before), load the keymap, show the editor ───
+function setConn(text, on) { $('connText').textContent = text; $('connDot').classList.toggle('on', !!on); }
+
+let loading = false;
+async function opened() {
+    if (loading) return;                    // (the pad says hello on connecting and when asked: load once)
+    loading = true;
+    try { await openedOnce(); } finally { loading = false; }
+}
+async function openedOnce() {
+    const pad = Link.pad;
+    setConn(`${pad.fw === 'ember01' ? 'MP1 Ember' : 'Pad'} connected · ${Math.round(pad.free / 1024)} KB free`, true);
+    $('connectBtn').textContent = 'Disconnect';
+    try {
+        await loadKeymap(path => Link.readText(path));
+        await loadSecrets().catch(e => { SECRETS.locked = e.message; });
+    } catch (e) {
+        await padKeymapProblem(e);          // (openold.html: an older keymap, none, or a broken one)
+        return;
+    }
+    KM.pending = null;
+    $('startView').hidden = true;
+    const home = kmAll().findIndex(L => L.data.name === pad.layer);
+    SEL.layer = home >= 0 ? home : 0;
+    SEL.key = 0;
+    $('noPad').hidden = true;
+    showView(VIEW);
+}
+let loadedFor = null;                       // the connection the keymap was loaded on
+Link.on(m => {
+    if (m.t === 'hello' && loadedFor !== Link.port) { loadedFor = Link.port; opened(); }
+    else if (m.t === 'state' && !$('editor').hidden) {
+        setConn(`MP1 Ember connected · ${Math.round(m.free / 1024)} KB free`, true);
+        renderThumbs();                         // (which layer the pad shows)
+    } else if (m.t === 'closed') {
+        loadedFor = null;
+        setConn('Not connected', false);
+        $('connectBtn').textContent = 'Connect…';
+    }
+});
+async function connectClick() {
+    if (Link.port) { await Link.close(); return; }
+    if (!Link.supported()) return;
+    setConn('Connecting…');
+    const ok = await Link.connectNew();
+    if (ok === false) $('connectHint').innerHTML = '<b>That port didn\'t answer.</b> It\'s probably the pad\'s console: click Connect… again and pick its <b>other</b> port.';
+    else if (ok === null) setConn('Not connected');
+}
+$('connectBtn').addEventListener('click', connectClick);
+$('connectBig').addEventListener('click', connectClick);
+
+// For tests: open files as if picked on this computer (converted when old). files: {path: text}
+window.EMBER_OPEN = (files, source) => openFiles(files, source || 'a test');
+// For tests (no pad): show these files as if a pad had sent them. files: {path: text}
+// For tests: the secret layers as if read from the pad ([Ember layer or null, ...])
+window.EMBER_TEST_SECRETS = list => { SECRETS.list = list.filter(Boolean).map((d, i) => secretLayer(i + 1, d)); renderEditor(); };
+window.EMBER_TEST = async (files, padLayer) => {
+    Link.pad = {fw: 'ember01', free: 166000, layer: padLayer};
+    await loadKeymap(async path => { if (!(path in files)) throw new Error('not found'); return files[path]; });
+    SEL.layer = Math.max(0, kmAll().findIndex(L => L.data.name === padLayer)); SEL.key = 0;
+    $('noPad').hidden = true;
+    showView(VIEW);
+};
+
+if (!Link.supported()) {
+    $('noSerial').hidden = false;
+    $('noSerial').textContent = !('serial' in navigator) ? 'This browser can\'t use serial ports: open this page in Chrome or Edge on a computer.'
+        : 'Serial ports only work when this page is opened from a file or an https:// address.';
+    $('connectBig').disabled = $('connectBtn').disabled = true;
+} else {
+    setConn('Looking for the pad…');
+    Link.autoConnect().then(ok => { if (!ok) setConn('Not connected'); });
+}
+</script>

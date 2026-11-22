@@ -1,0 +1,55 @@
+<script>
+// ─── Inside the MP1 Android app: its USB serial (window.MP1Android, MainActivity.java) dressed up as Web Serial
+// ports, so link.html (and the update's console) work the same as in Chrome. From FIRMWARE_04's phone page. ───
+const APP = window.MP1Android || null;
+if (APP) window.MP1Serial = (() => {
+    const known = new Map();                    // key -> port object (the same one each time)
+    const handlers = {connect: [], disconnect: []};
+    let permWaiter = null;
+    class AppPort {
+        constructor(info) { this.key = info.key; this.info = info; this.readable = this.writable = null; this.ctl = null; }
+        getInfo() { return {usbVendorId: this.info.vid, usbProductId: this.info.pid}; }
+        async open() {
+            if (!APP.open(this.key)) throw new Error('could not open the port');
+            const self = this;
+            this.readable = new ReadableStream({start(c) { self.ctl = c; }, cancel() { self.ctl = null; }});
+            this.writable = new WritableStream({write(chunk) { if (!APP.write(self.key, bytesB64(chunk))) throw new Error('write failed'); }});
+        }
+        async setSignals(s) { if ('dataTerminalReady' in s) APP.setDtr(this.key, !!s.dataTerminalReady); }
+        async close() { APP.close(this.key); this.end(); }
+        end() {
+            const c = this.ctl;
+            this.ctl = null;
+            this.readable = this.writable = null;
+            if (c) try { c.close(); } catch (e) { /* already */ }
+        }
+    }
+    const list = () => JSON.parse(APP.ports()).map(info => {
+        if (!known.has(info.key)) known.set(info.key, new AppPort(info));
+        const p = known.get(info.key);
+        p.info = info;
+        return p;
+    });
+    return {
+        async getPorts() { return list().filter(p => p.info.perm); },
+        // Android asks "Allow MP1 to access the macropad?" (once per plug-in, or never with "always")
+        async allow() {
+            const r = APP.askPermission();
+            if (r === 'none') throw Object.assign(new Error('No macropad plugged in'), {name: 'NotFoundError'});
+            if (r === 'ok') return true;
+            return new Promise(resolve => { permWaiter = resolve; });
+        },
+        // the same for the update drive (RPI-RP2, the RP2040's boot ROM)
+        async allowBoot() {
+            const r = APP.askBootPermission();
+            if (r !== 'asked') return r === 'ok';
+            return new Promise(resolve => { permWaiter = resolve; });
+        },
+        addEventListener(type, fn) { (handlers[type] || []).push(fn); },
+        _perm(ok) { if (permWaiter) { permWaiter(ok); permWaiter = null; } },
+        _data(key, s) { const p = known.get(key); if (p && p.ctl) p.ctl.enqueue(b64Bytes(s)); },
+        _gone(key) { const p = known.get(key); if (!p) return; p.end(); handlers.disconnect.forEach(fn => fn({target: p})); },
+        _attached() { handlers.connect.forEach(fn => fn({})); },
+    };
+})();
+</script>

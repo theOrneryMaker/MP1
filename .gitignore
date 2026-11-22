@@ -1,0 +1,18 @@
+# build output (goes in Releases, not the repo)
+BUILD_PAGES/
+BUILD_FROZEN/
+*.zip
+*.uf2
+*.apk
+__pycache__/
+*.pyc
+# anyone's own macropad files
+keymap.json
+settings.json
+wiring.json
+secret.json
+counters.json
+reminders.json
+*.bak
+# tools to download yourself
+mpy-cross.exe

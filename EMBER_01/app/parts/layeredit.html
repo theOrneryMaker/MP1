@@ -1,0 +1,318 @@
+<script>
+// ─── Layers: the layer panel (click the pad's top row) and the layer column ───
+// Live (changeLayer, live.html -> {"c": "layerset"}): the encoder, the lights, jiggle, Num Lock.
+// Add / rename / make home / reorder (drag, or Move up / down) / duplicate / delete change keymap.json and
+// layer files: restructure() writes them over the Link in one short sync, then the pad reads them again
+// ({"c": "reload"}). Undo covers the live changes (and follows a layer through a rename or a move).
+const LIGHT_SCENES = PADLIST.scenes, SCENE_COLORS = PADLIST.scene_colors, LIGHT_COLORS = PADLIST.colors;     // (the pad's own lists)
+const TURN_KINDS = [['none', 'Nothing'], ['scroll', 'Scroll'], ['media', 'Media'], ['keys', 'Keys']];
+const nice = s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase().replace(/_/g, ' ');
+let encTimer = null;
+
+// ─── the panel ───
+function layerPanel(L) {
+    const d = L.data, i = SEL.layer, e = d.encoder || {}, isHome = !L.secret && d.name === KM.index.home;
+    const lt = d.lights || null;
+    const sel = (id, opts, value, extra = '') => `<select class="field" id="${id}" ${extra}>${opts.map(([v, t]) =>
+        `<option value="${esc(v)}"${String(v) === String(value) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+    const scenes = (Link.pad && Link.pad.scenes) || LIGHT_SCENES;
+    const colorOpts = v => Object.keys(LIGHT_COLORS).map(c => [c, nice(c)]).concat(v && !LIGHT_COLORS[v] ? [[v, v]] : []);
+    const nColors = lt ? (SCENE_COLORS[lt.scene] ?? 2) : 0;
+    $('keyPanel').innerHTML = `
+        <div class="row"><h3>${L.secret ? 'Secret page ' + L.secret + ' of ' + SECRETS.list.length : 'Layer ' + (i + 1) + ' of ' + KM.layers.length}</h3>${isHome ? '<span class="chip">home</span>' : ''}</div>
+        ${L.secret ? `<span class="sub">The <b>Secret pages</b> pad function (hold + turn left to start with) opens page 1 and closes them again;
+          <b>turn the encoder</b> for the other pages. They close by themselves after the Secret lock time (Settings → Other). Never in the
+          pad's layer list, never shown in the player. Kept encrypted to this pad.</span>` : ''}
+        <div style="display:grid;gap:6px"><label class="lbl" for="lName">Name</label>
+          <div class="row"><input class="field" id="lName" style="flex:1" maxlength="16" value="${esc(d.name)}" autocomplete="off" spellcheck="false">
+            <button class="btn" type="button" id="lRename" hidden>Rename</button></div>
+          <span class="sub" id="lNameHint">${L.secret ? 'Shown on the top row of the pad while the page is open (never in the layer picker).' : 'Shown on the top row of the pad and in the layer picker.'}</span></div>
+        <div class="row wrap"${L.secret ? ' hidden' : ''}>
+          <button class="btn small" type="button" id="lHome" ${isHome ? 'disabled' : ''}>${isHome ? 'The home layer' : 'Make it the home layer'}</button>
+          <button class="btn small" type="button" id="lUp" ${i ? '' : 'disabled'}>Move up</button>
+          <button class="btn small" type="button" id="lDown" ${i < KM.layers.length - 1 ? '' : 'disabled'}>Move down</button>
+          <button class="btn small" type="button" id="lDup" ${KM.layers.length < MAX_LAYERS ? '' : 'disabled'}>Duplicate</button>
+          <button class="btn small" type="button" id="lDelete" ${KM.layers.length > 1 ? '' : 'disabled'}>Delete…</button></div>
+        ${L.secret ? '<div class="row"><button class="btn small" type="button" id="lSecretDelete">Delete this secret page…</button></div>' : ''}
+        <div id="lConfirm"></div>
+
+        ${sharePanelLayer()}
+        ${L.secret ? '' : cardSection(d)}
+        <div${L.secret ? ' hidden' : ''}><h4>Encoder</h4>
+        <div style="display:grid;gap:6px"><label class="lbl" for="eLabel">Label</label>
+          <input class="field" id="eLabel" maxlength="20" value="${esc(e.label || '')}" autocomplete="off" placeholder="Shown on the top row"></div>
+        <div class="turn" style="display:grid;gap:6px"><span class="lbl">Turn right</span>${sel('eKindcw', TURN_KINDS, turnKind(e.cw))}<div id="eBoxcw" style="display:grid;gap:6px"></div></div>
+        <div class="turn" style="display:grid;gap:6px"><span class="lbl">Turn left</span>${sel('eKindccw', TURN_KINDS, turnKind(e.ccw))}<div id="eBoxccw" style="display:grid;gap:6px"></div></div>
+        <label><input type="checkbox" id="eAccel"${e.accel ? ' checked' : ''}> Speed up when turned fast</label></div>
+        ${L.secret ? '<span class="sub">On a secret page the encoder turns the pages (and sends nothing).</span>' : ''}
+
+        <h4>Lights</h4>
+        <div class="seg" role="group" aria-label="Lights">
+          <button class="btn small" type="button" id="ltPad" aria-pressed="${!lt}">The pad's setting</button>
+          <button class="btn small" type="button" id="ltOwn" aria-pressed="${!!lt}">Its own</button></div>
+        ${lt ? `<div class="grid2">
+          <label class="lbl" for="ltScene">Scene</label>${sel('ltScene', scenes.map(s => [s, nice(s)]), lt.scene || 'static')}
+          ${nColors >= 1 ? `<label class="lbl" for="ltC1">Color</label><div class="row">${sel('ltC1', [['', 'The pad\'s color 1']].concat(colorOpts(lt.color1)), lt.color1 || '')}<span class="swatch" style="background:${swatch(lt.color1)}"></span></div>` : ''}
+          ${nColors >= 2 ? `<label class="lbl" for="ltC2">Second color</label><div class="row">${sel('ltC2', [['', 'The pad\'s color 2']].concat(colorOpts(lt.color2)), lt.color2 || '')}<span class="swatch" style="background:${swatch(lt.color2)}"></span></div>` : ''}
+          <label class="lbl" for="ltLevel">Brightness</label>${sel('ltLevel', Array.from({length: 10}, (_, n) => [n + 1, String(n + 1)]), lt.brightness || 4)}
+          <label class="lbl" for="ltSpeed">Speed</label>${sel('ltSpeed', [[0, 'The pad\'s setting']].concat(Array.from({length: 10}, (_, n) => [n + 1, String(n + 1)])), lt.speed || 0)}
+        </div>` : '<span class="sub">Uses the Lights settings (TOOLS menu, or Settings here).</span>'}
+
+        <h4>While this layer shows</h4>
+        <div class="flags">
+          <label><input type="checkbox" id="lJiggle"${d.jiggle ? ' checked' : ''}> Mouse jiggle on</label>
+          <label><input type="checkbox" id="lNum"${d.num_lock ? ' checked' : ''}> Keep Num Lock on</label></div>
+        <div class="live" id="liveBar"></div>`;
+    turnForm('cw', e.cw);
+    turnForm('ccw', e.ccw);
+    liveBar();
+    if (!L.secret) cardWire(d);
+
+    // name: Enter or leaving the field renames (a rename is a short sync)
+    const name = $('lName');
+    name.oninput = () => {
+        const p = nameProblem(name.value.trim(), L);
+        $('lNameHint').textContent = p || (name.value.trim() !== d.name ? 'Enter to rename.' : 'Shown on the pad\'s top row and in the layer picker.');
+        $('lNameHint').classList.toggle('bad', !!p);
+        $('lRename').hidden = name.value.trim() === d.name || !!p;
+    };
+    name.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); renameLayer(L, name.value.trim()); } else if (ev.key === 'Escape') { name.value = d.name; name.oninput(); } };
+    name.onblur = () => { if (name.value.trim() !== d.name && !nameProblem(name.value.trim(), L)) renameLayer(L, name.value.trim()); };
+    $('lRename').onclick = () => renameLayer(L, name.value.trim());
+    $('lHome').onclick = () => { KM.index.home = d.name; restructure({show: d.name}); };
+    if ($('lSecretDelete')) $('lSecretDelete').onclick = () => askDelete(i);
+    $('lUp').onclick = () => moveLayer(i, i - 1);
+    $('lDown').onclick = () => moveLayer(i, i + 1);
+    $('lDup').onclick = () => duplicateLayer(i);
+    $('lDelete').onclick = () => askDelete(i);
+
+    // encoder
+    $('eLabel').oninput = () => { clearTimeout(encTimer); encTimer = setTimeout(() => setEncoder({label: $('eLabel').value}, 'elabel'), 350); };
+    $('eLabel').onblur = () => { if (encTimer) { clearTimeout(encTimer); encTimer = null; setEncoder({label: $('eLabel').value}, 'elabel'); } };
+    for (const t of ['cw', 'ccw']) $('eKind' + t).onchange = () => {
+        const kind = $('eKind' + t).value, other = (d.encoder || {})[t === 'cw' ? 'ccw' : 'cw'];
+        const start = {none: null, scroll: {scroll: t === 'cw' ? 1 : -1}, media: {media: t === 'cw' ? 'VOL_UP' : 'VOL_DN'},
+            keys: {key: t === 'cw' ? 'RIGHT_ARROW' : 'LEFT_ARROW'}}[kind];
+        if (kind === 'media' && other && other.media) start.media = other.media === 'VOL_UP' ? 'VOL_DN' : other.media === 'VOL_DN' ? 'VOL_UP' : start.media;
+        setEncoder({[t]: start});
+        layerPanel(kmAll()[SEL.layer]);
+    };
+    $('eAccel').onchange = () => setEncoder({accel: $('eAccel').checked});
+
+    // lights
+    $('ltPad').onclick = () => { if (lt) { changeLayer(SEL.layer, {lights: null}); layerPanel(kmAll()[SEL.layer]); } };
+    $('ltOwn').onclick = () => { if (!lt) { changeLayer(SEL.layer, {lights: {scene: 'static', color1: 'WHITE', brightness: 4}}); layerPanel(kmAll()[SEL.layer]); } };
+    if (lt) {
+        const read = () => {
+            const o = {scene: $('ltScene').value};
+            if ($('ltC1') && $('ltC1').value) o.color1 = $('ltC1').value;
+            else if (!$('ltC1') && lt.color1) o.color1 = lt.color1;           // (kept for a scene that uses it)
+            if ($('ltC2') && $('ltC2').value) o.color2 = $('ltC2').value;
+            else if (!$('ltC2') && lt.color2) o.color2 = lt.color2;
+            o.brightness = +$('ltLevel').value;
+            if (+$('ltSpeed').value) o.speed = +$('ltSpeed').value;
+            return o;
+        };
+        ['ltScene', 'ltC1', 'ltC2', 'ltLevel', 'ltSpeed'].forEach(id => { if ($(id)) $(id).onchange = () => {
+            changeLayer(SEL.layer, {lights: read()});
+            layerPanel(kmAll()[SEL.layer]);
+        }; });
+    }
+    $('lJiggle').onchange = () => changeLayer(SEL.layer, {jiggle: $('lJiggle').checked || null});
+    $('lNum').onchange = () => changeLayer(SEL.layer, {num_lock: $('lNum').checked || null});
+}
+const swatch = v => LIGHT_COLORS[v] || (/^#[0-9a-f]{6}$/i.test(v || '') ? v : 'transparent');
+
+// ─── the encoder ───
+function turnKind(a) {
+    const x = actionOf(a);
+    if (!x) return 'none';
+    return {scroll: 'scroll', media: 'media', key: 'keys', combo: 'keys'}[x.kind] || 'other';
+}
+function turnForm(t, a) {
+    const box = $('eBox' + t), kind = turnKind(a);
+    if (kind === 'scroll') {
+        box.innerHTML = `<div class="row"><select class="field" id="eDir${t}" style="width:auto"><option value="1"${a.scroll > 0 ? ' selected' : ''}>Up</option>
+            <option value="-1"${a.scroll < 0 ? ' selected' : ''}>Down</option></select>
+            <input class="field" id="eAmt${t}" type="number" min="1" max="20" value="${Math.abs(a.scroll) || 1}" style="width:80px" title="Lines a click"><span class="sub">a click</span></div>`;
+        $('eDir' + t).onchange = $('eAmt' + t).onchange = () => {
+            const n = Math.max(1, Math.min(20, parseInt($('eAmt' + t).value, 10) || 1));
+            setEncoder({[t]: {scroll: n * +$('eDir' + t).value}});
+        };
+    } else if (kind === 'media') {
+        box.innerHTML = `<select class="field" id="eMedia${t}">${Object.entries(MEDIA_WORDS).map(([v, w]) => `<option value="${v}"${v === a.media ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select>`;
+        $('eMedia' + t).onchange = () => setEncoder({[t]: {media: $('eMedia' + t).value}});
+    } else if (kind === 'keys') {
+        const list = a.combo ? a.combo.slice(0, 4) : [a.key];
+        comboPicker(box, list, l => {
+            setEncoder({[t]: !l.length ? null : l.length === 1 ? {key: l[0]} : {combo: l}});
+            turnForm(t, (kmAll()[SEL.layer].data.encoder || {})[t]);
+        });
+    } else if (kind === 'other') {
+        const x = describe(a);
+        box.innerHTML = `<div class="field sub">${esc(x[0] + (x[2] ? ': ' + x[2] : ''))} (kept; pick a kind above to change it)</div>`;
+        $('eKind' + t).insertAdjacentHTML('beforeend', '<option value="other" selected>' + esc(x[0]) + '</option>');
+    } else box.innerHTML = '';
+}
+function setEncoder(fields, join) {
+    const e = Object.assign({}, kmAll()[SEL.layer].data.encoder || {});
+    for (const [f, v] of Object.entries(fields)) { if (v == null || v === false) delete e[f]; else e[f] = v; }
+    if (!('label' in e)) e.label = '';
+    if (JSON.stringify(e) === JSON.stringify(kmAll()[SEL.layer].data.encoder || {})) return;
+    changeLayer(SEL.layer, {encoder: e}, join ? join + ':' + SEL.layer : null);
+}
+
+// ─── names and files ───
+// every {"layer": from} (keys, macros, HOLD+KEY) -> to; returns the layers whose files changed
+function renameRefs(from, to) {
+    const changed = new Set();
+    const walk = (o, owner) => {
+        if (Array.isArray(o)) o.forEach(x => walk(x, owner));
+        else if (o && typeof o === 'object') {
+            if (o.layer === from) { o.layer = to; changed.add(owner); }
+            for (const v of Object.values(o)) if (v && typeof v === 'object') walk(v, owner);
+        }
+    };
+    for (const L of KM.layers) { walk(L.data.keys, L); walk(L.data.encoder, L); }
+    walk(KM.index.hold_keys, 'index');
+    changed.delete('index');                // (keymap.json is always written)
+    return [...changed];
+}
+function countRefs(name) {
+    let n = 0;
+    const walk = o => {
+        if (Array.isArray(o)) o.forEach(walk);
+        else if (o && typeof o === 'object') { if (o.layer === name) n++; Object.values(o).forEach(v => v && typeof v === 'object' && walk(v)); }
+    };
+    KM.layers.forEach(L => { walk(L.data.keys); walk(L.data.encoder); });
+    walk(KM.index.hold_keys);
+    return n;
+}
+
+// ─── changes to the layer list ───
+function renameLayer(L, n) {
+    if (L.secret) { if (n && n !== L.data.name) changeLayer(kmAll().indexOf(L), {name: n}); return; }     // (saved with the secret file)
+    if (n === L.data.name || nameProblem(n, L)) return;
+    const from = L.data.name;
+    L.data.name = n;
+    if (KM.index.home === from) KM.index.home = n;
+    const writes = new Set([L].concat(renameRefs(from, n)));
+    restructure({writes: [...writes], show: n});
+}
+function addLayer() {
+    if (KM.layers.length >= MAX_LAYERS) return;
+    const name = freeName('LAYER ' + (KM.layers.length + 1));
+    const L = {file: freeFile(name), data: {ember: 'layer', name, keys: [null, null, null, null, null, null, null, null],
+        encoder: {label: 'Volume', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}}};
+    KM.layers.push(L);
+    SEL.layer = KM.layers.length - 1; SEL.key = 'layer';
+    restructure({writes: [L], show: name});
+    setTimeout(() => { const f = $('lName'); if (f) { f.focus(); f.select(); } }, 0);
+}
+function duplicateLayer(i) {
+    if (KM.layers.length >= MAX_LAYERS) return;
+    const src = KM.layers[i], name = freeName(src.data.name.slice(0, 13) + ' 2');
+    const L = {file: freeFile(name), data: Object.assign(clone(src.data), {name})};
+    KM.layers.splice(i + 1, 0, L);
+    SEL.layer = i + 1; SEL.key = 'layer';
+    restructure({writes: [L], show: name});
+}
+function moveLayer(from, to) {
+    if (to < 0 || to >= KM.layers.length || from === to) return;
+    const [L] = KM.layers.splice(from, 1);
+    KM.layers.splice(to, 0, L);
+    SEL.layer = to;
+    restructure({show: L.data.name});
+}
+// Deleting a layer (or a secret page) asks first: in the layer panel (askDelete), or right under the Delete… button of
+// the layer column (editor.html, deleteAsk). The same words and the same deletion both ways.
+function deleteAskText(i) {
+    const L = kmAll()[i];
+    if (L.secret) return `Delete the secret page <b>${esc(L.data.name)}</b> and its keys from the pad? Undo can't bring it back.`;
+    const refs = countRefs(L.data.name);
+    return `Delete <b>${esc(L.data.name)}</b> and its 8 keys from the pad?
+        ${refs ? `${refs} key${refs === 1 ? '' : 's'} that go${refs === 1 ? 'es' : ''} to it will do nothing.` : ''}
+        ${L.data.name === KM.index.home ? `The home layer becomes ${esc(KM.layers[i ? 0 : 1].data.name)}.` : ''}
+        Undo can't bring a layer back.`;
+}
+function doDelete(i) {
+    const L = kmAll()[i];
+    if (L.secret) return deleteSecret(L);
+    KM.layers.splice(i, 1);
+    if (KM.index.home === L.data.name) KM.index.home = KM.layers[0].data.name;
+    SEL.layer = Math.min(i, KM.layers.length - 1); SEL.key = 'layer';
+    restructure({deletes: [L.file], show: KM.layers[SEL.layer].data.name});
+}
+function askDelete(i) {
+    const id = kmAll()[i].secret ? 'lSec' : 'lDel';
+    $('lConfirm').innerHTML = `<div class="msg warn">${deleteAskText(i)}
+        <div class="row" style="margin-top:8px"><button class="btn" type="button" id="${id}Yes">Delete it</button>
+        <button class="btn" type="button" id="${id}No">Keep it</button></div></div>`;
+    $(id + 'No').onclick = () => { $('lConfirm').innerHTML = ''; };
+    $(id + 'Yes').onclick = () => doDelete(i);
+}
+
+// the files go to the pad in one short sync, then it reads them again
+const STRUCT = {busy: false};
+async function restructure({writes = [], deletes = [], show}) {
+    KM.index.layers = KM.layers.map(L => L.file);
+    renderEditor();
+    if (!Link.port || KM.pending) { LIVE.state = 'offline'; LIVE.note = KM.pending ? 'Kept in the page until it is saved to the pad (Layers, top).' : 'Not connected: the change is kept in this page.'; liveBar(); return; }
+    while (STRUCT.busy) await new Promise(r => setTimeout(r, 50));
+    STRUCT.busy = true;
+    await whenIdle();
+    LIVE.busy = true;
+    LIVE.state = 'sending'; liveBar();
+    let m = null;
+    try {
+        Link.send({c: 'sync', on: true});
+        for (const L of writes) if (KM.layers.includes(L)) await Link.writeText('layers/' + L.file, JSON.stringify(L.data));
+        await Link.writeText('keymap.json', JSON.stringify(KM.index));
+        for (const f of deletes) {
+            try { await Link.request({c: 'delete', path: 'layers/' + f}); } catch (e) { if (!e.notFound) throw e; }
+        }
+        const answer = Link.waitFor(x => x.t === 'reloaded', 10000);
+        Link.send({c: 'reload', show});
+        m = await answer;
+        if (!m) throw new Error('The pad didn\'t answer.');
+        liveResult(m);
+        if (m.errors && m.errors.length) { LIVE.state = 'warn'; LIVE.note = 'Saved, but the pad found problems: ' + m.errors.join('; '); }
+    } catch (e) {
+        LIVE.state = 'error'; LIVE.note = e.message;
+    } finally {
+        Link.send({c: 'sync', on: false});
+        LIVE.busy = false;
+        STRUCT.busy = false;
+        liveBar();
+        pump();
+    }
+}
+
+// ─── the layer column: Add layer, drag to reorder ───
+$('addLayer').addEventListener('click', addLayer);
+let dragFrom = null;
+$('thumbs').addEventListener('dragstart', e => {
+    const b = e.target.closest('[data-layer]');
+    if (!b || kmAll()[+b.dataset.layer].hold) { e.preventDefault(); return; }
+    dragFrom = +b.dataset.layer;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(dragFrom));
+});
+$('thumbs').addEventListener('dragover', e => {
+    const b = e.target.closest('[data-layer]');
+    if (dragFrom == null || !b || kmAll()[+b.dataset.layer].hold) return;
+    e.preventDefault();
+    document.querySelectorAll('.thumb.drop').forEach(x => x.classList.remove('drop'));
+    b.classList.add('drop');
+});
+$('thumbs').addEventListener('drop', e => {
+    const b = e.target.closest('[data-layer]');
+    document.querySelectorAll('.thumb.drop').forEach(x => x.classList.remove('drop'));
+    if (dragFrom == null || !b) return;
+    e.preventDefault();
+    const to = +b.dataset.layer, from = dragFrom;
+    dragFrom = null;
+    if (!kmAll()[to].hold) moveLayer(from, to);
+});
+$('thumbs').addEventListener('dragend', () => { dragFrom = null; document.querySelectorAll('.thumb.drop').forEach(x => x.classList.remove('drop')); });
+</script>

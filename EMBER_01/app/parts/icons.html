@@ -1,0 +1,287 @@
+<!-- ICONS (FIRMWARE_04 shared/fa_loader.html, unchanged): Font Awesome, Remix Icon, Simple Icons, Material Symbols from the internet.
+     One copy for every page: app/parts/shared/fa_loader.html, joined into each page by the build (tools/assemble.py). -->
+<script>
+(() => {
+    const FA_CSS = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css';
+    window.FA_CSS = FA_CSS;
+    window.FA_BRANDS_CSS = FA_CSS.replace('all.min.css', 'brands.min.css');
+    window.FA_OK = false;
+    // The page's own buttons: their label -> the Font Awesome icon that replaces the drawing
+    const MAP = {
+        'Help': 'fa-circle-question', 'Auto: follow the computer': 'fa-circle-half-stroke', 'Light': 'fa-sun', 'Dark': 'fa-moon',
+        'Mini window (always on top)': 'fa-window-restore', 'Export layer': 'fa-file-export', 'Import layer': 'fa-file-import',
+        'Export key': 'fa-file-export', 'Import key': 'fa-folder-open', 'Preview screen': 'fa-display', 'Delete layer': 'fa-trash-can',
+        'Copy JSON': 'fa-copy', 'Undo': 'fa-rotate-left', 'Redo': 'fa-rotate-right', 'Print a cheat sheet': 'fa-print',
+        'Stop': 'fa-stop', 'Remove the last step': 'fa-delete-left', 'Edit the key action': 'fa-pen',
+        'Connect the macropad': 'fa-plug', 'Open from drive': 'fa-file-import', 'Open file': 'fa-folder-open', 'Save as': 'fa-floppy-disk', 'Refresh': 'fa-arrows-rotate',
+        'Add to the drive': 'fa-upload', 'Add files': 'fa-upload', 'Add a folder': 'fa-folder-plus', 'Reset all to defaults': 'fa-clock-rotate-left',
+        'Capture keys': 'fa-keyboard', 'Record macro': 'fa-circle', 'Hold to confirm': 'fa-clock', 'Repeat while held': 'fa-repeat',
+        'Mouse jiggle while shown': 'fa-arrow-pointer', 'Keep Num Lock on while shown': 'fa-hashtag', 'Speed up when turned fast': 'fa-bolt',
+        'Swap directions': 'fa-right-left', 'Clear the encoder': 'fa-trash-can', 'Add layer': 'fa-plus', 'Layer menu': 'fa-ellipsis',
+        'Key tools': 'fa-ellipsis', 'No icon': 'fa-xmark', 'Download': 'fa-download', 'Delete': 'fa-trash-can', 'Lights for this layer': 'fa-lightbulb',
+        'Home layer': 'fa-star', 'Home layer (at power-up)': 'fa-star', 'Make this the home layer': 'fa-star',
+        'Secret layer (TOG SEC 1 / 2)': 'fa-lock', "The home layer can't be secret": 'fa-lock', 'Secret 1': 'fa-lock', 'Secret 2': 'fa-lock',
+    };
+    // A stored "fa" value -> safe classes ("fa-house" alone means the solid style)
+    window.faClass = value => {
+        const s = String(value || '').trim().toLowerCase();
+        if (!s || !/^[a-z0-9 -]+$/.test(s)) return '';
+        return /(^|\s)(fa-(solid|regular|brands|light|thin|duotone|sharp)|fas|far|fab)(\s|$)/.test(s) ? s : 'fa-solid ' + s;
+    };
+    // ─── Icon sets for Link / pad icons. A stored value names one icon of one set:
+    //   "fa-solid fa-house" (Font Awesome Free), "ri-home-fill" (Remix Icon), "si si-github"
+    //   (Simple Icons), "ms home" (Material Symbols, filled). All free licences.
+    const SET_CSS = {
+        ri: 'https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.2.0/remixicon.min.css',
+        si: 'https://cdn.jsdelivr.net/npm/simple-icons-font@11.0.0/font/simple-icons.min.css',
+        ms: 'https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,1,0',
+    };
+    window.ICON_SET_CSS = SET_CSS;
+    window.MS_NAMES_URL = 'https://cdn.jsdelivr.net/npm/material-symbols@0.27.0/index.d.ts';
+    // Your own icons, drawn in the Pixel studio: "my NAME". Their pixels: icons/mine.json on the pad
+    // (the configurator) or linkicons.json's "mine" (the Link pages): NAME -> {"18": rows, "14", "32"}
+    window.MY_ICONS = window.MY_ICONS || {};
+    window.myIconRows = (name, n) => {       // NAME's pixels at n x n: as drawn, or scaled from its biggest
+        const e = window.MY_ICONS[name];
+        if (!e) return null;
+        if (Array.isArray(e[n])) return e[n];
+        const have = Object.keys(e).map(Number).filter(k => Array.isArray(e[k])).sort((a, b) => b - a);
+        if (!have.length) return null;
+        const src = e[have[0]], m = have[0], rows = [];
+        for (let y = 0; y < n; y++) { let r = ''; for (let x = 0; x < n; x++) r += (src[Math.floor(y * m / n)] || '')[Math.floor(x * m / n)] === '1' ? '1' : '0'; rows.push(r); }
+        return rows;
+    };
+    const myUrls = {};                       // NAME -> a PNG of it (a mask: takes the text color)
+    window.myIconUrl = name => {
+        const e = window.MY_ICONS[name];
+        const rows = e && (e[32] || e[18] || e[14] || window.myIconRows(name, 32));
+        if (!rows) return '';
+        const key = name + ':' + rows.join('');
+        if (myUrls[name] && myUrls[name][0] === key) return myUrls[name][1];
+        const c = document.createElement('canvas');
+        c.width = c.height = rows.length;
+        const g = c.getContext('2d');
+        rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] === '1') g.fillRect(x, y, 1, 1); });
+        myUrls[name] = [key, c.toDataURL()];
+        return myUrls[name][1];
+    };
+    // The 14 built-in symbols (the pad's font order) and your redrawn ones: {"k": {SYMBOL: 18 rows of
+    // 13 (keys)}, "s": {SYMBOL: 13 rows of 10 (status row)}}, put into a page's PAD_FONT
+    window.SYM_ORDER = ['⏯', '⏭', '⏮', '⏹', '🔊', '🔉', '🔇', '▲', '▼', '◀', '▶', '↵', '⇥', '⌫'];
+    const SYM_BOX = {k: {bits: 14, r0: 2, rows: 18, c0: 0, cols: 13}, s: {bits: 16, r0: 1, rows: 13, c0: 3, cols: 10}};
+    window.SYM_BOX = SYM_BOX;
+    window.symRows = (font, kind, ch) => {   // a symbol's pixels from a PAD_FONT (or its __orig): rows of '0'/'1'
+        const g = font[kind] && font[kind][ch], b = SYM_BOX[kind];
+        if (!g) return null;
+        const rows = [];
+        for (let r = b.r0; r < b.r0 + b.rows; r++) rows.push(parseInt(g.substr(r * 4, 4), 16).toString(2).padStart(b.bits, '0').slice(b.c0, b.c0 + b.cols));
+        return rows;
+    };
+    window.applySymEdits = (font, edits) => {
+        if (!font.__orig) Object.defineProperty(font, '__orig', {value: {k: Object.assign({}, font.k), s: Object.assign({}, font.s)}});
+        for (const kind of ['k', 's']) {
+            const b = SYM_BOX[kind];
+            for (const ch of window.SYM_ORDER) {
+                const o = font.__orig[kind][ch], e = edits && edits[kind] && edits[kind][ch];
+                if (!o) continue;
+                if (!Array.isArray(e)) { font[kind][ch] = o; continue; }
+                let g = '';
+                for (let r = 0; r < o.length / 4; r++) {
+                    let v = parseInt(o.substr(r * 4, 4), 16).toString(2).padStart(b.bits, '0');
+                    if (r >= b.r0 && r < b.r0 + b.rows) v = v.slice(0, b.c0) + String(e[r - b.r0] || '').replace(/[^01]/g, '0').padEnd(b.cols, '0').slice(0, b.cols) + v.slice(b.c0 + b.cols);
+                    g += parseInt(v, 2).toString(16).padStart(4, '0');
+                }
+                font[kind][ch] = g;
+            }
+        }
+    };
+    window.iconInfo = value => {             // {set, cls, text} or null
+        const s = String(value || '').trim().toLowerCase();
+        if (!s) return null;
+        let m = s.match(/^my[ :]([a-z0-9_-]{1,24})$/);
+        if (m) return {set: 'my', cls: 'my-ico', text: '', name: m[1]};
+        m = s.match(/^ms[ :]([a-z0-9_]+)$/);
+        if (m) return {set: 'ms', cls: 'material-symbols-rounded', text: m[1]};
+        if (/^ri-[a-z0-9-]+$/.test(s)) return {set: 'ri', cls: s, text: ''};
+        m = s.match(/^(?:si\s+)?si-([a-z0-9-]+)$/);
+        if (m) return {set: 'si', cls: 'si si-' + m[1], text: ''};
+        const fa = window.faClass(s);
+        return fa ? {set: 'fa', cls: fa, text: ''} : null;
+    };
+    window.iconParts = value => String(value || '').split(';').map(s => s.trim()).filter(Boolean).slice(0, 2);
+    // ─── Key labels: letters and up to two icons in any order, like typing. Stored as the letters
+    // ("icon"), the icons ("fa", "a; b") and where the icons sit among them ("icon_at": positions in
+    // the whole label; none = the icons first). Everything must fit the key's 30 pixels: a letter is
+    // 6 wide (a symbol 13), an icon 18 (16 or 14 when that's what fits; two icons 14 or 12), with a
+    // 1-pixel gap between neighbors (2 between two lone icons). Drawn the same way here, in MP1 Link
+    // and (as one picture, icons/pair.bmp) on the pad. ───
+    window.labelItems = (letters, fa, at) => {
+        const parts = window.iconParts(fa), L = Array.from(letters || ''), total = L.length + parts.length;
+        const pos = Array.isArray(at) && at.length === parts.length ? at : parts.map((_, i) => i);
+        const out = [];
+        let li = 0;
+        for (let p = 0; p < total; p++) {
+            const j = pos.indexOf(p);
+            if (j >= 0) out.push({i: parts[j]});
+            else if (li < L.length) out.push({t: L[li++]});
+        }
+        parts.forEach((c, j) => { if (!out.some(x => x.i === c)) out.push({i: c}); });     // (positions out of range)
+        while (li < L.length) out.push({t: L[li++]});
+        return out;
+    };
+    window.LABEL_W = 30;
+    window.labelFit = (items, wide) => {          // {n: icon size, total: width, gap} or null (doesn't fit)
+        const icons = items.filter(x => x.i).length;
+        const lw = ch => ((wide && wide[ch]) || 7) - 1;
+        const gap = icons === 2 && items.length === 2 ? 2 : 1;
+        for (const n of icons > 1 ? [14, 12] : icons ? [18, 16, 14] : [0]) {
+            const total = items.reduce((t, x) => t + (x.i ? n : lw(x.t)), 0) + Math.max(0, items.length - 1) * gap;
+            if (total <= window.LABEL_W) return {n, total, gap};
+        }
+        return null;
+    };
+    // Draw a label: icon(code, n) gives rows or null (not ready: returns false), letter(ch, x) draws
+    // one letter at its left edge x; the label is centered in the 30 pixels from x0; icons centered on cy.
+    window.drawLabel = (items, fit, x0, cy, icon, rowsAt, letter, wide) => {
+        let x = x0 + Math.floor((window.LABEL_W - fit.total) / 2);
+        const lw = ch => ((wide && wide[ch]) || 7) - 1;
+        const got = items.map(it => it.i ? icon(it.i, fit.n) : true);
+        if (got.some(r => !r)) return false;
+        items.forEach((it, j) => {
+            if (it.i) { rowsAt(got[j], x, Math.round(cy - fit.n / 2)); x += fit.n + fit.gap; }
+            else { letter(it.t, x); x += lw(it.t) + fit.gap; }
+        });
+        return true;
+    };
+    // Does a key need the whole-label picture (rather than the pad's own text, or one icon + a letter)?
+    window.labelMixed = (letters, fa, at) => {
+        const parts = window.iconParts(fa), L = Array.from(letters || '');
+        if (!parts.length) return false;
+        if (parts.length > 1) return true;
+        const items = window.labelItems(letters, fa, at);
+        return !(items[0].i && L.length <= 1 && (!L.length || window.labelFit(items) && window.labelFit(items).n === 18));
+    };
+    window.iconHtml = (value, extra = '', style = '') => {      // the icon as HTML ('' if it isn't one)
+        const parts = window.iconParts(value);
+        if (parts.length > 1) return parts.map(p => window.iconHtml(p, extra, style)).join('');
+        const i = window.iconInfo(value);
+        if (!i) return '';
+        if (i.set === 'my') {
+            const url = window.myIconUrl(i.name);
+            return `<i class="my-ico${extra ? ' ' + extra : ''}" style="${url ? `-webkit-mask-image:url(${url});mask-image:url(${url});` : ''}${style}" aria-hidden="true"></i>`;
+        }
+        return `<i class="${i.cls}${extra ? ' ' + extra : ''}"${style ? ` style="${style}"` : ''} aria-hidden="true">${i.text}</i>`;
+    };
+    // An icon as 1-bit pixels, n x n (cropped to its own ink, fitted, thresholded at half), the way
+    // the pad shows it: rows of '0'/'1', or null (not loaded / not an icon)
+    window.iconPixels = async (value, n) => {
+        if (String(value || '').includes(';')) value = window.iconParts(value)[0];     // (two icons: the first, where only one fits)
+        const info = window.iconInfo(value);
+        if (info && info.set === 'my') return window.myIconRows(info.name, n);
+        if (!window.FA_OK || !info) return null;
+        const el = document.createElement('i');
+        el.className = info.cls;
+        el.textContent = info.text;
+        el.style.cssText = 'position:absolute;left:-9999px;top:0;font-size:16px';
+        document.body.appendChild(el);
+        const glyph = info.text || (getComputedStyle(el, '::before').content || '').replace(/^["']|["']$/g, '');
+        const fam = getComputedStyle(el).fontFamily, wt = getComputedStyle(el).fontWeight;
+        el.remove();
+        if (!glyph || glyph === 'none') return null;
+        try { await document.fonts.load(`${wt} 64px ${fam}`, glyph); } catch (e) { return null; }
+        const N = 256, k = document.createElement('canvas');
+        k.width = k.height = N;
+        const g = k.getContext('2d');
+        g.font = `${wt} ${info.text ? 180 : 200}px ${fam}`;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(glyph, N / 2, N / 2);
+        const d = g.getImageData(0, 0, N, N).data;
+        let x0 = N, y0 = N, x1 = -1, y1 = -1;
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (d[(y * N + x) * 4 + 3] > 20) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 < 0 || (info.text && x1 - x0 > N * 0.9)) return null;        // (a ligature that didn't form draws the word)
+        const sw = x1 - x0 + 1, sh = y1 - y0 + 1, o = document.createElement('canvas');
+        o.width = o.height = n;
+        const og = o.getContext('2d'), s = Math.min(n / sw, n / sh);
+        og.drawImage(k, x0, y0, sw, sh, (n - sw * s) / 2, (n - sh * s) / 2, sw * s, sh * s);
+        const od = og.getImageData(0, 0, n, n).data, rows = [];
+        for (let y = 0; y < n; y++) { let r = ''; for (let x = 0; x < n; x++) r += od[(y * n + x) * 4 + 3] >= 128 ? '1' : '0'; rows.push(r); }
+        return rows;
+    };
+    // An icon drawn smooth for the Link displays (Original icons): a canvas 4 x n square, its shape
+    // in the alpha (cropped to its own ink and fitted like iconPixels), or null. "my" icons: null (they're pixels).
+    window.iconSmooth = async (value, n) => {
+        if (String(value || '').includes(';')) value = window.iconParts(value)[0];
+        const info = window.iconInfo(value);
+        if (!window.FA_OK || !info || info.set === 'my') return null;
+        const el = document.createElement('i');
+        el.className = info.cls;
+        el.textContent = info.text;
+        el.style.cssText = 'position:absolute;left:-9999px;top:0;font-size:16px';
+        document.body.appendChild(el);
+        const glyph = info.text || (getComputedStyle(el, '::before').content || '').replace(/^["']|["']$/g, '');
+        const fam = getComputedStyle(el).fontFamily, wt = getComputedStyle(el).fontWeight;
+        el.remove();
+        if (!glyph || glyph === 'none') return null;
+        try { await document.fonts.load(`${wt} 64px ${fam}`, glyph); } catch (e) { return null; }
+        const N = 256, k = document.createElement('canvas');
+        k.width = k.height = N;
+        const g = k.getContext('2d');
+        g.font = `${wt} ${info.text ? 180 : 200}px ${fam}`;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(glyph, N / 2, N / 2);
+        const d = g.getImageData(0, 0, N, N).data;
+        let x0 = N, y0 = N, x1 = -1, y1 = -1;
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (d[(y * N + x) * 4 + 3] > 20) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        if (x1 < 0 || (info.text && x1 - x0 > N * 0.9)) return null;
+        const sw = x1 - x0 + 1, sh = y1 - y0 + 1, S = n * 4, o = document.createElement('canvas');
+        o.width = o.height = S;
+        const s = Math.min(S / sw, S / sh);
+        o.getContext('2d').drawImage(k, x0, y0, sw, sh, (S - sw * s) / 2, (S - sh * s) / 2, sw * s, sh * s);
+        return o;
+    };
+    function swap(root) {
+        if (!window.FA_OK || !root || !root.querySelectorAll) return;
+        const list = root.matches && root.matches('svg.ico') ? [root] : root.querySelectorAll('svg.ico');
+        list.forEach(svg => {
+            const host = svg.closest('[aria-label],[data-tip]');
+            const name = svg.dataset.fa || (host && (MAP[host.getAttribute('aria-label')] || MAP[host.getAttribute('data-tip')]));
+            if (!name || !svg.parentNode) return;
+            const i = document.createElement('i');
+            i.className = 'ico fa-solid ' + name;
+            i.setAttribute('aria-hidden', 'true');
+            svg.replaceWith(i);
+        });
+    }
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = FA_CSS;
+    link.crossOrigin = 'anonymous';
+    link.onload = () => document.fonts.load('900 16px "Font Awesome 6 Free"').then(found => {
+        if (!found.length) return;          // the font didn't come: keep the drawings
+        window.FA_OK = true;
+        document.documentElement.classList.add('fa-on');
+        for (const href of Object.values(SET_CSS)) {        // the other icon sets (their fonts load when used)
+            const l = document.createElement('link');
+            l.rel = 'stylesheet';
+            l.href = href;
+            l.crossOrigin = 'anonymous';
+            document.head.appendChild(l);
+        }
+        swap(document.body);
+        new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) swap(n); })))
+            .observe(document.body, {childList: true, subtree: true});
+        window.dispatchEvent(new Event('fa-ready'));
+    }, () => { /* offline */ });
+    document.head.appendChild(link);
+})();
+</script>
+<style>
+    i.ico { width: 18px; height: 18px; font-size: 16px; line-height: 18px; text-align: center; vertical-align: -2px; stroke: none; }
+    .theme-toggle i.ico { width: 17px; height: 17px; font-size: 15px; line-height: 17px; }
+    i.my-ico { display: inline-block; width: 1em; height: 1em; vertical-align: -0.125em; background: currentColor; -webkit-mask-size: contain; mask-size: contain; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; image-rendering: pixelated; }
+    i.my-ico:not([style*="mask-image"]) { background: none; outline: 1px dashed currentColor; outline-offset: -2px; }
+    i.material-symbols-rounded { font-style: normal; font-size: 1.15em; line-height: 1; vertical-align: -0.15em; }
+</style>
+<!-- /FA_LOADER -->

@@ -1,0 +1,219 @@
+<main id="helpView" class="page help" hidden>
+<h2>Help</h2>
+<p class="sub">MP1 Ember: the pad and this page. Everything here works on Chrome or Edge on a computer.</p>
+
+<section class="panel"><h3>Connecting</h3>
+<p>Plug the pad in and click <b>Connect…</b>, then pick its port. If the page says the port didn't answer, you picked the
+pad's console: click Connect… again and pick its other port. After the first time the page connects by itself.</p>
+<p>Only one tab or program can use the pad at a time. Close the others if the page can't connect.</p>
+<p><b>Theme</b> (top right) picks the page's colors: Ember, OG (the original orange and purple), Ocean, Forest or Graphite, and Dark / Light / Auto (Auto follows the computer). It's remembered in this browser.</p></section>
+
+<section class="panel csvguide" id="helpCsv"><h3>Macros from a spreadsheet (.csv): the guide</h3>
+<p>For long, repetitive entry: 50–100 order lines, or the same form filled again and again. You build the list in Excel,
+save it as a .csv file, and the page turns it into one macro key. Press the key and the pad types the whole list.</p>
+
+<h4>1. The idea: one header row, then your data</h4>
+<p><b>Row 1 says what to press after each column.</b> Every row under it is one line of data, typed in turn.</p>
+<pre class="csvhelp">Part number {TAB},Quantity {TAB 2},Unit {TAB 3},Plant {ENTER}{WAIT 0.5}
+4471-220,12,EA,Plant 3
+4471-221,6,EA,Plant 3</pre>
+<p>For each row the pad types <b>4471-220</b>, presses Tab, types <b>12</b>, presses Tab twice, types <b>EA</b>, Tab three
+times, types <b>Plant 3</b>, presses Enter, waits half a second, then starts the next row. The words before the braces
+(“Part number”) are only names for you: they're never typed. An empty cell types nothing but still presses its column's keys.</p>
+
+<h4>2. Two forms on one page</h4>
+<p><b>Both forms once per record</b> (say 7 fields at the top, 5 further down): put all 12 columns side by side in one row.
+The header of the top form's last column holds the keys that get you to the bottom form, e.g. <code>Notes {TAB 2}{WAIT 0.5}</code>.
+Find them by clicking through the page once with only the keyboard and counting the Tabs.</p>
+<p><b>The top form once, then many lines below it</b> (an order's details, then its 50 lines): start a new section with a row
+whose first cell begins with <code>{HEADER}</code>. It's a header like row 1, with its own columns and keys, and the rows under
+it use it until the next <code>{HEADER}</code> row:</p>
+<pre class="csvhelp">Customer {TAB},PO {TAB},Date {TAB},Ship via {TAB},Terms {TAB},Rep {TAB},Notes {TAB 2}{WAIT 0.5}
+Acme Supply,PO-88213,11/24/2026,UPS,Net 30,JC,Dock 4
+{HEADER}Part {TAB},Qty {TAB},Unit {TAB},Price {TAB},Plant {ENTER}{WAIT 1}
+4471-220,12,EA,4.10,Plant 3
+4471-221,6,EA,2.75,Plant 3
+{HEADER}Finish
+{CTRL+S}{WAIT 2}</pre>
+<p><b>Keys that run once, up front</b> (say 49 presses of F7 to create a form's columns): give them a section of their own
+at the top: a header row (any name, e.g. <code>Setup</code>), then one row with the keys, e.g. <code>{F7 49 0.2}{WAIT 1}</code>, then
+<code>{HEADER}</code> for the form itself.</p>
+<p>The last section is a single cell of keys: it saves the order once, after all the lines. A file can have as many sections
+as the page needs, and it's still one macro key. The preview lists each section with its rows and columns. The pad gets
+between fields with keys, not mouse clicks: if a form is only reachable with the mouse, look for a keyboard route first.</p>
+<h4>3. The keys you can use (in curly braces)</h4>
+<table class="tokens">
+<tr><th>Write</th><th>Presses</th></tr>
+<tr><td><code>{TAB}</code> <code>{ENTER}</code> <code>{ESC}</code> <code>{SPACE}</code></td><td>Tab, Enter, Escape, Space</td></tr>
+<tr><td><code>{UP}</code> <code>{DOWN}</code> <code>{LEFT}</code> <code>{RIGHT}</code></td><td>the arrow keys</td></tr>
+<tr><td><code>{HOME}</code> <code>{END}</code> <code>{PGUP}</code> <code>{PGDN}</code></td><td>Home, End, Page Up, Page Down</td></tr>
+<tr><td><code>{DEL}</code> <code>{BACKSPACE}</code> <code>{INSERT}</code></td><td>Delete, Backspace, Insert</td></tr>
+<tr><td><code>{F1}</code> … <code>{F24}</code></td><td>the function keys</td></tr>
+<tr><td><code>{TAB 3}</code> <code>{DOWN 5}</code></td><td>a key several times (up to 999), as fast as the pad can</td></tr>
+<tr><td><code>{F7 49 0.2}</code></td><td>49 presses, 0.2 s apart (for a page that needs a moment after each press)</td></tr>
+<tr><td><code>{CTRL+S}</code> <code>{CTRL+SHIFT+V}</code> <code>{ALT+N}</code> <code>{WIN+R}</code></td><td>keys held together (up to 4)</td></tr>
+<tr><td><code>{WAIT 0.5}</code></td><td>a pause, in seconds (up to 60)</td></tr>
+<tr><td><code>{DATE}</code> · <code>{TIME}</code></td><td>today's date (11/21/2026) / the time (2:05 PM), typed when the macro runs</td></tr>
+<tr><td><code>{DATE YYYY-MM-DD}</code></td><td>the date your way (YYYY, MM, DD, M, D, HH, hh, h, mm, AMPM)</td></tr>
+<tr><td><code>{DATE MM/DD/YYYY +180}</code></td><td>a date counted from today: <code>+180</code> = 180 days ahead, <code>-30</code> = 30 days ago (<code>{DATE +90}</code> uses 11/21/2026 style)</td></tr>
+<tr><td><code>{NEXT LINE}</code></td><td>the next number of the counter LINE: 1, then 2, 3… (any name; reset it on the pad: TOOLS → Counter)</td></tr>
+<tr><td><code>{{</code> and <code>}}</code></td><td>type a real { or }</td></tr>
+</table>
+<p>Capitals or not, it doesn't matter: <code>{tab}</code> works too. Keys can also go <b>inside any cell</b>: a cell holding
+<code>{CTRL+A}Plant 3</code> selects what's already in the field, then types over it.</p>
+
+<h4>4. Pauses: give the website time</h4>
+<p>The pad types far faster than a person. Wherever the website has to catch up, put a <code>{WAIT …}</code> after the key
+that makes it work: a drop-down list loading, a new order line appearing, a page saving. Start generous (0.5–1 s); once it
+runs cleanly, shorten them. The pauses in the header row happen on every row.</p>
+
+<h4>5. Build it in Excel</h4>
+<ul>
+<li>Type the header row in row 1, then paste your data below it.</li>
+<li><b>Before pasting, format the columns as Text</b> (select them, right-click → Format Cells → Text). Otherwise Excel turns
+<b>00123</b> into <b>123</b>, part numbers like <b>1-2</b> into dates, and long numbers into <b>1.2E+11</b>, and the pad types
+what Excel shows.</li>
+<li><b>File → Save As → CSV (Comma delimited)</b>. Commas inside a cell are fine: Excel puts that cell in quotes.</li>
+<li>The pad types the letters, numbers and symbols of a US keyboard. Accented letters or curly quotes (often pasted from
+email) can't be typed: the preview lists them with their row and column so you can fix them.</li>
+</ul>
+
+<h4>6. Put it on a key</h4>
+<ol>
+<li>In <b>Keys</b>, pick a key, set its action to <b>Macro</b>, and click <b>From a CSV…</b>. (Or just drop the .csv file onto
+a key of the pad drawing.)</li>
+<li>Open your .csv, or paste the cells straight from Excel. The preview shows what follows each column, how many rows and
+steps, and roughly how long it takes to type. Anything it doesn't understand is listed with its row and column.</li>
+<li>Click <b>Replace the macro</b> (or <b>Add to the end</b>). It goes to the pad at once. Give the key a label you'll recognize.</li>
+</ol>
+
+<h4>7. Test it safely first</h4>
+<p>Open Notepad, click into it, and press the key. You see exactly what the website would get, with nothing at stake. Then
+click into the first field on the website and press the key for real. <b>To stop a macro part way, press any key, turn the encoder or press it:</b> it stops at once, lets go of everything, and the pad shows STOPPED. Nothing more is typed.</p>
+
+<h4>8. Share it</h4>
+<p>Send the .csv itself (anyone can open and change it in Excel), or the finished key: <b>Copy key</b> and paste it into Webex
+or an email; the other person selects a key and presses Ctrl+V. See “Sharing keys and layers” below.</p>
+
+<h4>Examples to start from</h4>
+<ul class="examples">
+<li><button class="btn small" type="button" data-example="order">Material order</button> 6 order lines: part, quantity, unit, plant, Enter and a short wait per line.</li>
+<li><button class="btn small" type="button" data-example="form">Repeated form</button> a 5-field form per row: waits between fields, ↓ Enter to pick from a drop-down, Ctrl+S to save, Alt+N for a new form.</li>
+<li><button class="btn small" type="button" data-example="twoforms">Two forms per record</button> a 7-field form and a 5-field form further down, filled once per row (12 columns side by side).</li>
+<li><button class="btn small" type="button" data-example="sections">Order header and lines</button> the top form once, then 6 lines in the form below ({HEADER} sections), then one save.</li>
+</ul></section>
+
+<section class="panel"><h3>The encoder</h3>
+<ul>
+<li><b>Turn:</b> what the layer's encoder does (volume, scroll, …). Set it in Keys → Layer settings.</li>
+<li><b>Click:</b> Layer keys (or the layer picker, or Layer cards). <b>Double click:</b> the Spotify screen. <b>Triple click:</b> the home layer. Change them in Settings → Encoder.</li>
+<li><b>Hold and press a key:</b> the HOLD+KEY keys. Their screen (black on white) shows as soon as you hold; take your time.</li>
+<li><b>Hold and turn:</b> the Hold + turn functions in Settings → Encoder.</li>
+<li><b>Hold 1.5 s and let go</b> (no key, no turn): the TOOLS menu: Timer, Counter, Busy light, Settings, Mouse jiggle, Lock keys, Drive, About.</li>
+<li><b>Layer cards:</b> one big card a layer, its picture with the name below (or just the name, big): easy to read at arm's
+length. Turn to flip through them, click to pick. Give a layer its card picture in Keys → Layer settings → Layer card.</li>
+<li><b>In a menu, the layer picker or Layer cards:</b> turn to move, click to choose, hold to close. Settings are saved when the menu closes.
+A key press there only closes it: nothing is typed.</li>
+<li><b>Locked:</b> hold the encoder 3 s to unlock.</li>
+</ul></section>
+
+<section class="panel"><h3>Keys</h3>
+<p>The middle shows the pad's screen, drawn exactly as the pad draws it. Click a key to edit it on the right:</p>
+<ul>
+<li><b>Label:</b> the words on the key. The page shows how they fit (one line next to a picture, two without).</li>
+<li><b>Picture:</b> an icon from four sets (search them; they load from the internet only while you choose), or draw one.
+<b>With label</b> keeps it small above the words; <b>Alone, big</b> fills the key. <b>Smaller / Bigger</b> adjust an icon.</li>
+<li><b>Action:</b> Keys (up to 4 together; Capture… reads them from your keyboard), Text, Macro, Media, Open, Go to a layer,
+a pad function, or the mouse. <b>Repeat while held</b> and <b>Hold to confirm</b> are below it.</li>
+</ul>
+<p><b>Every change goes to the pad at once</b> and is saved there. Ctrl+Z / Ctrl+Y undo and redo. If the pad's drive is showing
+on the computer, the pad can't save its files: changes then last until it restarts.</p></section>
+
+<section class="panel"><h3>Macros</h3>
+<p>Choose <b>Macro</b> as the action. <b>Record…</b> adds what you type: letters run together into one Text step, shortcuts and
+keys like Enter become Keys steps, and pressing the same key again counts it (×2, ×3…). Tick <b>keep pauses as waits</b> to keep
+your timing. Click <b>Stop recording</b> when done.</p>
+<p>Edit any step afterwards, change its count, move it, remove it, or <b>Add a step</b> (Keys, Text, Wait, Media, Mouse, Open).
+A few keys never reach the page (Win alone sometimes, Alt+Tab, Ctrl+W): add those as steps.</p>
+<p><b>Stopping a macro:</b> while one runs, press any key, turn the encoder or press it. It stops at once (even in the middle of a wait or a long text), lets go of every key, and the pad shows STOPPED. That press does nothing else.</p></section>
+
+<section class="panel"><h3>Sharing keys and layers</h3>
+<p><b>Copy key</b> (under a key's settings) puts it on the clipboard as text: paste it into Webex or an email. Whoever gets it selects a
+key in their page and presses <b>Ctrl+V</b>. <b>Save key…</b> makes the same as a file (.mp1key.json, plain text); <b>Load key…</b>,
+or dropping the file on a key of the pad drawing, puts it on a key. Layers work the same way (Layer settings → Copy layer / Save
+layer…; Load layer… under the Layers list adds one). Undo takes a loaded key back. Keys and layers saved from the old MP1 page load too.
+Before you send one, check it holds nothing private.</p></section>
+
+<section class="panel"><h3>Layers</h3>
+<p>The left column shows every layer; HOLD+KEY is last. Under the selected layer: <b>Layer settings</b> and <b>Delete…</b>.
+Drag a layer to move it, or use <b>+ Add layer</b>.</p>
+<p>Layer settings: the name, the home layer (the one the pad starts on), move, duplicate, delete, the encoder (label, turn right,
+turn left, speed-up), the layer's own lights, and mouse jiggle / Num Lock while it shows. Adding, renaming, moving or deleting
+shows SYNCING on the pad for a moment.</p></section>
+
+<section class="panel"><h3>Secret pages</h3>
+<p>Up to four pages of keys the pad keeps to itself. The <b>Secret pages</b> pad function (hold + turn left to start with; put it
+on any gesture, key or HOLD+KEY key) opens page 1, and <b>turning the encoder</b> goes through the pages (the top row shows which,
+e.g. 1/2). On a secret page the encoder only turns pages: it sends nothing. The same function again closes them, and after the
+<b>Secret lock</b> time with no use (Settings → Other; 0 = never) they close by themselves. <b>Secret page 2</b> (a pad function)
+opens page 2 straight away.</p>
+<ul>
+<li>They're never in the pad's layer picker or Layer keys, and the player only ever shows “SECRET”, never their name or keys.</li>
+<li>They're saved in secret.json, encrypted to this pad's own chip: a copy of the file can't be read anywhere else, not even
+by another MP1. The page can only open or change them with this pad on the cable.</li>
+<li>In Keys they're at the bottom of the Layers list (“Secret page 1 · …”). Edit their keys like any layer; <b>+ Secret page</b>
+adds one, and their Layer settings have <b>Delete this secret page…</b>.</li>
+<li>Converting a pad from the old firmware converts its Secret 1 and Secret 2 into pages 1 and 2; the old file is kept in the old_keymap folder.</li>
+</ul></section>
+
+<section class="panel"><h3>Settings, Files, Player</h3>
+<ul>
+<li><b>Settings:</b> the same settings as the pad's TOOLS menu, changed live. <b>Default</b> puts one back.</li>
+<li><b>Files:</b> what's on the pad's drive and how much room is left. Download any file; add or delete your own files.
+Light scenes (.mp1scene.json) go into scenes/ by themselves; restart the pad to use new ones. The firmware and the keymap
+files are protected here: change those in Keys and Settings.</li>
+<li><b>Player:</b> the pad's screen, live. Click a key to press it, or a layer to switch to it. <b>Always on top</b> puts it in a
+small window that stays above your other windows.</li>
+</ul></section>
+
+<section class="panel"><h3>Timer, counter, date and busy light</h3>
+<ul>
+<li><b>Timer / stopwatch:</b> TOOLS → Timer (or the pad function on a gesture or key). Keys 1-4 start 5, 10, 15 or 25 minutes;
+turn for a minute more or less; click to start / pause; key 6 resets; key 7 switches to the stopwatch (key 8 there takes a lap).
+<b>Focus</b> (key 8) runs 25 minutes of work and 5 of break, round and round, with the busy light on while you work.
+Hold the encoder to go back to your keys: the time left shows on the top row and the timer keeps going. When it ends the pad
+beeps, flashes the lights and says so; any key, turn or click stops it.</li>
+<li><b>Counter:</b> TOOLS → Counter. A tally (keys +1, -1, +10, Reset, Type it; turning counts too), and every counter your
+<b>Number</b> keys use (Prev / Next).</li>
+<li><b>Number keys</b> (Keys → Action → Number): each press types the counter's next number, 1, 2, 3…: line numbers, item
+numbers. In a CSV, <code>{NEXT LINE}</code>. Start again from 1 on the Counter screen (Reset).</li>
+<li><b>Date / time keys</b> (Keys → Action → Date / time): types today's date or the time, in the format you pick. In a CSV,
+<code>{DATE}</code> or <code>{TIME}</code>. <b>Days from today</b> types a date ahead or back (in a CSV, <code>{DATE MM/DD/YYYY +180}</code>). The pad learns the time from this page (or the phone app) when it connects; until
+then it says CLOCK NOT SET.</li>
+<li><b>Busy light:</b> TOOLS → Busy light (or the pad function): the lights turn red and BUSY shows on the top row.</li>
+<li><b>Reminders:</b> Settings → Reminders: a time, a note, and which days. The pad beeps and shows the note (it needs the
+clock, so a page must have connected since the pad was plugged in).</li>
+</ul></section>
+
+<section class="panel"><h3>Spotify</h3>
+<p><b>Double click</b> the encoder (by default) for the pad's Spotify screen: the song, the artist and the time, and eight keys:
+<b>+</b> (save to / remove from Liked Songs), <b>Shuffle</b>, <b>Repeat</b> (off, all, one), <b>Here</b> (play on this computer),
+then <b>Prev</b>, <b>Play / Pause</b>, <b>Next</b> and <b>Mute</b>. The encoder is the volume. Click to go back to your layer.</p>
+<p>The page needs to be open and signed in to Spotify (the Spotify tab: your own free Spotify key, once; the account needs Premium).
+When Spotify plays on this computer, the keys and the volume are the computer's own media keys; anywhere else (your phone, a
+speaker), they go through Spotify. The page asks once whether a computer it sees is this one.</p></section>
+
+<section class="panel"><h3>Older keymaps and backups</h3>
+<p>A pad with a keymap from FIRMWARE_03 / 04 (or older) shows <b>Convert it</b>. <b>Open a folder…</b> opens a backup of a pad's
+drive; <b>Open a file…</b> opens one keymap file. Either way the keymap opens here first, marked <b>Not on the pad yet</b>, with
+<b>What changed</b>. Nothing goes to the pad until <b>Save to the pad</b>, and the pad's previous keymap is kept in an
+old_keymap_<i>date</i> folder on it (see Files).</p></section>
+
+<section class="panel"><h3>If something's wrong</h3>
+<ul>
+<li><b>"Couldn't save":</b> the pad's drive is showing on the computer (TOOLS → Drive). Hide it again; the pad restarts.</li>
+<li><b>The pad shows PROBLEMS at start-up:</b> a file it couldn't read. The page's Files tab lets you look at and download it.</li>
+<li><b>Icons don't appear in the search:</b> the icon sets need the internet. Pictures already on keys don't.</li>
+<li><b>The page can't connect:</b> close other tabs and programs using the pad, unplug it, plug it back in.</li>
+</ul></section>
+</main>

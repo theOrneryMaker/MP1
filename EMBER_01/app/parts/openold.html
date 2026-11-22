@@ -1,0 +1,229 @@
+<script>
+// ─── Opening keymaps (6.7): an old keymap on the pad, one from this computer, or none at all ───
+// Opened / converted keymaps go into the editor as PENDING (KM.pending): nothing goes to the pad until
+// "Save to the pad", which first moves the pad's old keymap files into old_keymap_<date>/ (with the report),
+// then writes the new files and asks the pad to read them ({"c": "reload"}). The old settings that Ember has too are
+// sent as settings ({"c": "setting"}); the secret layers are written to secret.json, encrypted to this pad.
+
+// the start screen: shown instead of the editor when the pad's keymap can't be opened as it is
+function showStart(kind, detail) {
+    startArgs = [kind, detail];
+    showView(null);
+    $('noPad').hidden = true;
+    const box = $('startView');
+    box.hidden = false;
+    const open = `<div class="row"><button class="btn" type="button" data-open="folder">Open a folder…</button>
+        <button class="btn" type="button" data-open="file">Open a file…</button></div>
+        <span class="sub">A backup of a pad's drive (the folder with keymap.json in it), or one keymap file.</span>`;
+    if (kind === 'old') box.innerHTML = `<h2>This pad has an older keymap</h2>
+        <p>It's from ${esc(detail)}. Ember needs it converted: the page does that, shows what changed, then saves it to the pad.
+        The old files are kept on the pad in a folder of their own.</p>
+        <div><button class="btn main" type="button" id="convertPad">Convert it</button></div>
+        <h3>Or open another keymap</h3>${open}`;
+    else if (kind === 'new') box.innerHTML = `<h2>This pad has no keymap yet</h2>
+        <p>Start with one empty layer and build it here, or open a keymap you have.</p>
+        <div><button class="btn main" type="button" id="newKeymap">Start a new keymap</button></div>
+        <h3>Or open a keymap</h3>${open}`;
+    else box.innerHTML = `<h2>The keymap couldn't be opened</h2><div class="msg bad">${esc(detail)}</div>
+        <p>Open a keymap you have instead (saving it replaces the pad's; its files are kept in a folder first).</p>${open}`;
+    if ($('convertPad')) $('convertPad').onclick = convertPadKeymap;
+    if ($('newKeymap')) $('newKeymap').onclick = newKeymap;
+}
+const KIND_WORDS = {v3: 'FIRMWARE_03 / 04', v2: 'an early firmware (one-file keymap, version 2)', v1: 'the first firmware (version 1)', ember: 'Ember'};
+
+// after a failed load: why? (none / an older kind / broken)
+async function padKeymapProblem(err) {
+    let text;
+    try { text = await Link.readText('keymap.json'); }
+    catch (e) { return e.notFound ? showStart('new') : showStart('bad', err.message); }
+    let kind = null;
+    try { kind = oldKind(oldJson(text)); } catch (e) { /* not JSON */ }
+    if (kind && kind !== 'ember') return showStart('old', KIND_WORDS[kind]);
+    showStart('bad', err.message);
+}
+
+// the pad's own old files -> files map
+async function padOldFiles() {
+    const files = {'keymap.json': await Link.readText('keymap.json')};
+    const index = oldJson(files['keymap.json']);
+    if (oldKind(index) === 'v3') for (const f of index.layers || []) {
+        try { files['layers/' + f] = await Link.readText('layers/' + f); } catch (e) { /* missing: the report says so */ }
+    }
+    for (const f of ['linkicons.json', 'settings.json', 'secret.json']) {
+        try { files[f] = await Link.readText(f); } catch (e) { /* none */ }
+    }
+    try {       // (04's QUICK KEYS)
+        for (const [n, dir] of (await Link.request({c: 'ls', path: 'keys'})).items) if (!dir && /^[1-8]\.mp1key\.json$/.test(n)) files['keys/' + n] = await Link.readText('keys/' + n);
+    } catch (e) { /* none */ }
+    return files;
+}
+async function convertPadKeymap() {
+    $('convertPad').disabled = true;
+    $('convertPad').textContent = 'Reading the pad\'s files…';
+    try { await openFiles(await padOldFiles(), 'this pad'); }
+    catch (e) { showStart('bad', e.message); }
+}
+function newKeymap() {
+    const layer = {ember: 'layer', name: 'MAIN', keys: [null, null, null, null, null, null, null, null],
+        encoder: {label: 'Volume', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}};
+    useKeymap({ember: 'keymap', layers: ['main.json'], home: 'MAIN'}, {'main.json': layer}, {source: 'a new keymap', report: []});
+    savePending();
+}
+
+// files from this computer (a folder, or one file)
+$('pickFolder').addEventListener('change', e => readPicked([...e.target.files], true));
+$('pickFile').addEventListener('change', e => readPicked([...e.target.files], false));
+document.addEventListener('click', e => {
+    const b = e.target.closest('[data-open]');
+    if (!b) return;
+    const input = $(b.dataset.open === 'folder' ? 'pickFolder' : 'pickFile');
+    input.value = '';
+    input.click();
+});
+async function readPicked(list, folder) {
+    if (!list.length) return;
+    const files = {};
+    let source = list[0].name;
+    if (folder) {
+        source = (list[0].webkitRelativePath || '').split('/')[0] || 'the folder';
+        for (const f of list) {
+            const rel = (f.webkitRelativePath || f.name).split('/').slice(1).join('/');
+            if (!/\.json$/i.test(rel) || f.size > 512 * 1024 || rel.split('/').length > 2) continue;
+            files[rel] = await f.text();
+        }
+        if (!files['keymap.json']) return openProblem('There\'s no keymap.json in ' + source + '. Pick the folder that has keymap.json in it.');
+    } else files['keymap.json'] = await list[0].text();
+    try { await openFiles(files, source); }
+    catch (e) { openProblem(source + ': ' + e.message); }
+}
+function openProblem(text) {
+    if (!$('startView').hidden) { const m = document.createElement('div'); m.className = 'msg bad'; m.textContent = text; $('startView').appendChild(m); }
+    else if (!$('noPad').hidden) $('connectHint').innerHTML = `<span class="msg bad">${esc(text)}</span>`;
+    else { LIVE.state = 'error'; LIVE.note = text; liveBar(); FILES.note = text; FILES.noteKind = 'bad'; renderFiles(); }
+}
+
+// files -> converted (or as they are) -> the editor, pending
+async function openFiles(files, source) {
+    const r = emberFromOld(files);
+    const layers = {};
+    for (const [f, d] of Object.entries(r.layers)) layers[f] = d;
+    const inKeymap = r.secrets || [];       // (version 1 / 2 keymaps keep their secret layers in the keymap itself)
+    if (files['secret.json'] != null || inKeymap.length) {     // the secret layers: opened with the connected pad's key, converted if old
+        if (!Link.port) Object.assign(SECRETS, {list: [], present: true, converted: false, locked: files['secret.json'] != null
+            ? 'connect the pad that made them to open them.' : 'connect the pad to convert them (they\'re kept encrypted to it).'});
+        else if (files['secret.json'] != null) await loadSecrets(files['secret.json']).catch(e => { SECRETS.locked = e.message; });
+        else Object.assign(SECRETS, {list: [], locked: '', present: false, converted: false});
+        if (Link.port && !SECRETS.locked) for (const d of inKeymap) {
+            if (SECRETS.list.length >= MAX_SECRET) break;
+            SECRETS.list.push(secretLayer(SECRETS.list.length + 1, d));
+            SECRETS.converted = true;
+        }
+        const n = SECRETS.list.filter(Boolean).length;
+        r.report.unshift(SECRETS.locked ? 'Secret layers: ' + SECRETS.locked + ' The pad\'s own secret.json is left as it is.'
+            : n ? `Secret layers: ${n} ${SECRETS.converted ? 'converted to secret pages' : 'opened'} (${SECRETS.list.map((L, i) => 'page ' + (i + 1) + ' ' + L.data.name).join(', ')}), kept encrypted to this pad.` : 'Secret layers: none.');
+    }
+    useKeymap(r.keymap, layers, {source, kind: r.kind, report: r.report, settings: r.settings || null,
+        secrets: (files['secret.json'] != null || inKeymap.length > 0) && !SECRETS.locked});
+    if (missingPics().length) {
+        KM.pending.drawing = true; pendingBox();
+        await drawPicsLocal();
+        KM.pending.drawing = false;
+    }
+    renderEditor();
+}
+function useKeymap(index, layers, pending) {
+    const keep = KM.settings || {};
+    Object.assign(KM, {index, layers: index.layers.map(f => ({file: f, data: layers[f]})), settings: keep, problems: [],
+        pending: Object.assign({fromPad: source => source === 'this pad'}, pending)});
+    LIVE.undo = []; LIVE.redo = []; LIVE.waiting = []; LIVE.state = 'idle';
+    SEL.layer = Math.max(0, KM.layers.findIndex(L => L.data.name === index.home)); SEL.key = 0;
+    $('startView').hidden = true; $('noPad').hidden = true;
+    startArgs = null;
+    showView('editor');
+}
+// icons named but not drawn yet: drawn here, without sending anything (the whole keymap is saved later)
+async function drawPicsLocal() {
+    for (let t = 0; !window.FA_OK && t < 40; t++) await new Promise(r => setTimeout(r, 200));     // (the icon sets loading)
+    if (!window.FA_OK) return;
+    for (const [li, i] of missingPics()) {
+        const p = await missingPicFor(li, i);
+        if (!p) continue;
+        if (i === 'card') kmAll()[li].data.pic = p;
+        else setKeyLocal(li, i, Object.assign({}, keyOf(li, i), {pic: p}));
+    }
+}
+
+// the box at the top of the Layers column while a keymap isn't on the pad yet
+function pendingBox() {
+    const box = $('pendingBox'), p = KM.pending;
+    if (!box) return;
+    if (!p) { box.innerHTML = ''; return; }
+    const n = p.report.length;
+    box.innerHTML = `<div class="msg warn"><b>Not on the pad yet.</b> ${p.kind && p.kind !== 'ember' ? 'Converted from ' : 'Opened from '}${esc(p.source)}.
+        ${p.drawing ? '<br>Drawing its icons into pad pixels…' : ''}
+        <div class="row" style="margin-top:8px"><button class="btn main" type="button" id="savePending" ${Link.port && !p.drawing && !p.saving ? '' : 'disabled'}>${p.saving ? esc(p.saving) : 'Save to the pad'}</button></div>
+        ${Link.port ? '<span class="sub">Replaces the pad\'s keymap. Its old files are kept in a folder on the pad first.</span>' : '<span class="sub">Connect the pad to save it there.</span>'}
+        ${n ? `<details${p.fromPad(p.source) ? ' open' : ''}><summary>What changed (${n})</summary><ul class="report">${p.report.map(l => `<li>${esc(l)}</li>`).join('')}</ul></details>` : ''}</div>`;
+    if ($('savePending')) $('savePending').onclick = savePending;
+}
+
+const stamp = () => { const d = new Date(), z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}-${z(d.getHours())}${z(d.getMinutes())}`; };
+async function savePending() {
+    const p = KM.pending;
+    if (!p || !Link.port) return;
+    const step = t => { p.saving = t; pendingBox(); };
+    let backup = null;
+    try {
+        await whenIdle();
+        LIVE.busy = true;
+        Link.send({c: 'sync', on: true});
+        // 1. the pad's keymap files -> old_keymap_<date>/ (layers/ and linkicons.json moved, the rest copied)
+        step('Keeping the old files…');
+        const top = (await Link.request({c: 'ls'})).items, has = n => top.some(([m]) => m === n);
+        const old = [];
+        for (const f of ['keymap.json', 'linkicons.json', 'settings.json', 'secret.json']) if (has(f)) old.push(f);
+        if (has('layers')) for (const [n, dir] of (await Link.request({c: 'ls', path: 'layers'})).items) if (!dir) old.push('layers/' + n);
+        if (old.length) {
+            backup = 'old_keymap_' + stamp();
+            await Link.request({c: 'mkdir', path: backup});
+            if (old.some(f => f.startsWith('layers/'))) await Link.request({c: 'mkdir', path: backup + '/layers'});
+            for (const f of old) await Link.writeBytes(backup + '/' + f, await Link.readBytes(f));
+            if (p.report.length) await Link.writeText(backup + '/REPORT.txt', `Converted to Ember from ${p.source} on ${new Date().toLocaleString()}:\n` + p.report.map(l => '- ' + l).join('\n') + '\n');
+            for (const f of old) if (f.startsWith('layers/') || f === 'linkicons.json') await Link.request({c: 'delete', path: f});
+        }
+        // 2. the new files
+        step('Saving the layers…');
+        if (!has('layers')) await Link.request({c: 'mkdir', path: 'layers'});
+        for (const L of KM.layers) await Link.writeText('layers/' + L.file, JSON.stringify(L.data));
+        await Link.writeText('keymap.json', JSON.stringify(KM.index));
+        if (p.secrets) await Link.writeText('secret.json', await secretText(SECRETS.list.map(L => L.data), await padSecretKey()));
+        // 3. the pad reads them
+        step('The pad is reading it…');
+        const answer = Link.waitFor(x => x.t === 'reloaded', 10000);
+        Link.send({c: 'reload', show: KM.index.home});
+        const m = await answer;
+        if (!m) throw new Error('The pad didn\'t answer.');
+        // 4. the old settings Ember has too (each checked and saved by the pad)
+        if (p.settings) {
+            step('Setting it up…');
+            for (const [name, value] of Object.entries(p.settings)) {
+                if (name === 'ember') continue;
+                const ok = Link.waitFor(x => (x.t === 'setok' && x.name === name) || x.t === 'error', 5000);
+                Link.send({c: 'setting', name, value});
+                if ((await ok || {}).t === 'setok') KM.settings[name] = value;
+            }
+        }
+        KM.pending = null;
+        LIVE.state = m.errors && m.errors.length ? 'warn' : 'saved';
+        LIVE.note = (m.errors && m.errors.length ? 'Saved, but the pad found problems: ' + m.errors.join('; ') + '. ' : '')
+            + (backup ? 'The old keymap is in ' + backup + '/ on the pad (Files tab).' : '');
+    } catch (e) {
+        p.saving = null;
+        LIVE.state = 'error'; LIVE.note = 'Not saved: ' + e.message;
+    } finally {
+        Link.send({c: 'sync', on: false});
+        LIVE.busy = false;
+        renderEditor();
+    }
+}
+</script>

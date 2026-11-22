@@ -1,0 +1,149 @@
+<script>
+// ─── Files on the pad: what's on its drive (linkfiles.py: ls / read / write / delete / df / restart) ───
+// Folders open in place. Download any file; delete (asks first) or add files. The firmware (lib/, code.py,
+// boot.py) and the keymap (keymap.json, layers/, settings.json, secret.json) can't be changed here: the
+// Keys and Settings tabs do that. Drop-in light scenes (*.mp1scene.json) go into scenes/ by themselves.
+const FILES = {lists: {}, open: new Set(), free: null, size: null, note: '', noteKind: '', confirm: null, busy: false};
+const HIDDEN_FILES = n => n.startsWith('.') || n === 'System Volume Information';
+const FIRMWARE_FILES = ['lib', 'boot.py', 'code.py', 'boot_out.txt', 'ember'];
+const KEYMAP_FILES = ['keymap.json', 'settings.json', 'secret.json', 'layers', 'wiring.json'];
+function guarded(path) {
+    const top = path.split('/')[0];
+    if (FIRMWARE_FILES.includes(top)) return 'Part of the firmware: not changed from here.';
+    if (KEYMAP_FILES.includes(top)) return top === 'wiring.json' ? 'The pad\'s wiring: not changed from here.' : 'Part of the keymap: change it in the Keys or Settings tab.';
+    return '';
+}
+const kb = n => n < 1024 ? n + ' B' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+
+async function filesOpen() {
+    if (!Link.port) { $('filesView').innerHTML = '<h2>Files on the pad</h2><div class="msg">Connect the pad to see its files.</div>'; return; }
+    renderFiles();
+    try {
+        await filesList('');
+        for (const p of [...FILES.open]) await filesList(p);
+        const d = await Link.request({c: 'df'});
+        FILES.free = d.free; FILES.size = d.size;
+    } catch (e) { filesNote(e.message, 'bad'); }
+    renderFiles();
+}
+async function filesList(path) {
+    const r = await Link.request(path ? {c: 'ls', path} : {c: 'ls'});
+    FILES.lists[path] = r.items.filter(([n]) => !HIDDEN_FILES(n)).sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
+}
+function filesNote(text, kind) { FILES.note = text; FILES.noteKind = kind || ''; renderFiles(); }
+
+function fileRows(path, depth) {
+    const items = FILES.lists[path];
+    if (!items) return `<div class="frow sub" style="padding-left:${depth * 20 + 8}px">Reading…</div>`;
+    if (!items.length) return `<div class="frow sub" style="padding-left:${depth * 20 + 8}px">(empty)</div>`;
+    return items.map(([name, dir, size]) => {
+        const full = path ? path + '/' + name : name, why = guarded(full), open = FILES.open.has(full);
+        const asking = FILES.confirm === full;
+        const row = `<div class="frow${why ? ' locked' : ''}" style="padding-left:${depth * 20 + 8}px">
+            ${dir ? `<button class="fname folder" type="button" data-fopen="${esc(full)}" aria-expanded="${open}">${open ? '▾' : '▸'} ${esc(name)}/</button>`
+                  : `<span class="fname">${esc(name)}</span>`}
+            <span class="sub fsize">${dir ? '' : kb(size)}</span>
+            <span class="factions">
+              ${dir ? (why ? '' : `<button class="btn small" type="button" data-fadd="${esc(full)}">Add files here…</button>`)
+                    : `<button class="btn small" type="button" data-fget="${esc(full)}">Download</button>`}
+              ${why ? `<span class="sub" title="${esc(why)}">protected</span>` : `<button class="btn small" type="button" data-fdel="${esc(full)}" data-fdir="${dir ? 1 : ''}">Delete…</button>`}
+            </span></div>`;
+        const ask = asking ? `<div class="msg warn" style="margin-left:${depth * 20 + 8}px">Delete <b>${esc(full)}${dir ? '/' : ''}</b> from the pad? This can't be undone.
+            <div class="row" style="margin-top:8px"><button class="btn" type="button" data-fyes="${esc(full)}">Delete it</button><button class="btn" type="button" data-fno>Keep it</button></div></div>` : '';
+        return row + ask + (dir && open ? fileRows(full, depth + 1) : '');
+    }).join('');
+}
+function renderFiles() {
+    if ($('filesView').hidden) return;
+    const used = FILES.size ? FILES.size - FILES.free : 0;
+    $('filesView').innerHTML = `<div class="setbar"><h2>Files on the pad</h2>
+        ${FILES.size ? `<div class="space"><div class="spacebar"><span style="width:${(100 * used / FILES.size).toFixed(1)}%"></span></div>
+          <span class="sub">${kb(FILES.free)} free of ${kb(FILES.size)}</span></div>` : ''}
+        <div class="row"><button class="btn" type="button" data-fadd="">Add files…</button>
+          <button class="btn" type="button" id="fRefresh">Refresh</button>
+          <button class="btn" type="button" id="fRestart">Restart the pad</button>
+          <button class="btn" type="button" data-open="folder" title="A backup of a pad's drive, or a copy of an older keymap: opened in Keys, saved to the pad when you say">Open a keymap folder…</button></div>
+        <span class="sub">Light scenes (.mp1scene.json) go into scenes/ by themselves. Scenes and modules are read when the pad starts: restart it after adding them.</span>
+        ${FILES.note ? `<div class="msg ${FILES.noteKind}">${esc(FILES.note)}</div>` : ''}</div>
+        <section class="panel files">${fileRows('', 0)}</section>
+        <input type="file" id="fPick" multiple hidden>`;
+    $('fRefresh').onclick = () => { FILES.note = ''; filesOpen(); };
+    $('fRestart').onclick = async () => {
+        filesNote('Restarting the pad… it connects again by itself.');
+        try { await Link.request({c: 'restart'}); } catch (e) { /* it went away: that's the restart */ }
+    };
+}
+$('filesView').addEventListener('click', async e => {
+    const t = e.target.closest('button');
+    if (!t || FILES.busy) return;
+    if (t.dataset.fopen != null) {
+        const p = t.dataset.fopen;
+        if (FILES.open.has(p)) FILES.open.delete(p);
+        else { FILES.open.add(p); renderFiles(); try { await filesList(p); } catch (err) { filesNote(err.message, 'bad'); } }
+        renderFiles();
+    } else if (t.dataset.fget != null) {
+        const p = t.dataset.fget;
+        filesNote('Reading ' + p + '…');
+        try {
+            const bytes = await Link.readBytes(p), a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([bytes]));
+            a.download = p.split('/').pop();
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+            filesNote('Downloaded ' + p + ' (' + kb(bytes.length) + ').', 'good');
+        } catch (err) { filesNote(err.message, 'bad'); }
+    } else if (t.dataset.fdel != null) {
+        FILES.confirm = t.dataset.fdel; renderFiles();
+    } else if (t.dataset.fno != null) {
+        FILES.confirm = null; renderFiles();
+    } else if (t.dataset.fyes != null) {
+        const p = t.dataset.fyes, parent = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
+        FILES.confirm = null;
+        try {
+            await Link.request({c: 'delete', path: p});
+            FILES.open.delete(p);
+            await filesList(parent);
+            const d = await Link.request({c: 'df'}); FILES.free = d.free;
+            filesNote('Deleted ' + p + '.', 'good');
+        } catch (err) { filesNote(/rmdir|errno 39|ENOTEMPTY|not empty/i.test(err.message) ? 'Only an empty folder can be deleted: delete what\'s in it first.' : err.message, 'bad'); }
+    } else if (t.dataset.fadd != null) {
+        const pick = $('fPick');
+        pick.dataset.to = t.dataset.fadd;
+        pick.value = '';
+        pick.onchange = () => addFiles([...pick.files], pick.dataset.to);
+        pick.click();
+    }
+});
+async function addFiles(files, folder) {
+    if (!files.length) return;
+    const plan = files.map(f => {
+        const to = /\.mp1scene\.json$/i.test(f.name) && !folder ? 'scenes' : folder;
+        return {f, to, path: (to ? to + '/' : '') + f.name};
+    });
+    const bad = plan.find(p => guarded(p.path));
+    if (bad) return filesNote(bad.path + ': ' + guarded(bad.path), 'bad');
+    const total = plan.reduce((n, p) => n + p.f.size, 0);
+    if (FILES.free != null && total > FILES.free - 4096) return filesNote(`Not enough room: ${kb(total)} to add, ${kb(FILES.free)} free.`, 'bad');
+    FILES.busy = true;
+    try {
+        for (const p of plan) {
+            if (p.to && !(FILES.lists[''] || []).some(([n, d]) => d && n === p.to.split('/')[0])) {
+                await Link.request({c: 'mkdir', path: p.to});
+                await filesList('');
+            }
+            const bytes = new Uint8Array(await p.f.arrayBuffer());
+            await Link.writeBytes(p.path, bytes, (done, all) => { FILES.note = `Saving ${p.path}… ${Math.round(100 * done / Math.max(1, all))}%`; renderFiles(); });
+            FILES.open.add(p.to);
+            await filesList(p.to);
+        }
+        const d = await Link.request({c: 'df'}); FILES.free = d.free;
+        const restart = plan.some(p => /^(scenes|modules)(\/|$)/.test(p.to));
+        FILES.busy = false;
+        filesNote(`Added ${plan.map(p => p.path).join(', ')}.${restart ? ' Restart the pad to use it.' : ''}`, 'good');
+    } catch (err) {
+        FILES.busy = false;
+        filesNote(err.message, 'bad');
+    }
+}
+Link.on(m => { if (m.t === 'closed') { FILES.lists = {}; FILES.free = FILES.size = null; } });
+</script>

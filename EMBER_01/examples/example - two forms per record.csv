@@ -1,0 +1,4 @@
+Customer {TAB},PO {TAB},Date {TAB},Ship via {TAB},Terms {TAB},Rep {TAB},Notes {TAB 2}{WAIT 0.5},Part {TAB},Qty {TAB},Unit {TAB},Price {TAB},Plant {CTRL+S}{WAIT 1.5}{ALT+N}{WAIT 2}
+Acme Supply,PO-88213,11/24/2026,UPS,Net 30,JC,Dock 4,4471-220,12,EA,4.10,Plant 3
+Northline Electric,PO-88214,11/25/2026,FedEx,Net 30,JC,,5520-118,2,EA,18.50,Plant 1
+Bayview Mechanical,PO-88215,11/25/2026,UPS,Net 45,AR,Call first,6011-004,1,EA,240.00,Plant 2

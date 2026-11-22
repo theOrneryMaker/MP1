@@ -1,0 +1,4 @@
+Customer {TAB}{WAIT 0.3},PO number {TAB},Ship date {TAB}{WAIT 0.3},Ship via {DOWN}{ENTER}{TAB},Notes {CTRL+S}{WAIT 1.5}{ALT+N}{WAIT 2}
+Acme Supply,PO-88213,11/24/2026,UPS,Leave at dock 4
+Northline Electric,PO-88214,11/25/2026,FedEx,
+Bayview Mechanical,PO-88215,11/25/2026,UPS,Call before delivery

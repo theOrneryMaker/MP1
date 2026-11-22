@@ -1,0 +1,139 @@
+<script>
+// ─── The keymap: the Ember files (NOTES/KEYMAP_FORMAT.md), read from the pad over the Link ───
+//   KM.index  keymap.json {ember: "keymap", layers: [files], home, hold_keys}
+//   KM.layers [{file, data: {ember: "layer", name, keys, encoder, lights, ...}}], then HOLD+KEY as KM.hold
+//   KM.settings settings.json (only what differs from the defaults), or {}
+const KM = {index: null, layers: [], settings: {}, problems: []};
+
+async function loadKeymap(read) {
+    // read(path) -> text (the pad over the Link, or a test's own files)
+    const problems = [];
+    let index;
+    try { index = JSON.parse(await read('keymap.json')); }
+    catch (e) { throw new Error('keymap.json couldn\'t be read: ' + e.message); }
+    if (!index || index.ember !== 'keymap') throw new Error('keymap.json isn\'t an Ember keymap. (Opening older keymaps comes in step 6.7.)');
+    const layers = [];
+    for (const file of index.layers || []) {
+        try {
+            const data = JSON.parse(await read('layers/' + file));
+            if (data && data.ember === 'layer') layers.push({file, data});
+            else problems.push(file + ' isn\'t an Ember layer');
+        } catch (e) { problems.push(file + ': ' + e.message); }
+    }
+    let settings = {};
+    try { const s = JSON.parse(await read('settings.json')); if (s && s.ember === 'settings') settings = s; }
+    catch (e) { /* no settings.json: the defaults */ }
+    Object.assign(KM, {index, layers, settings, problems});
+    return KM;
+}
+const MAX_LAYERS = 24;
+// layer names and files (the layer panel's rename / add; the phone's add)
+function nameProblem(n, L) {
+    if (!n) return 'A layer needs a name.';
+    if (n === 'HOLD+KEY') return 'That name is taken by the HOLD+KEY keys.';
+    if (KM.layers.some(o => o !== L && o.data.name.toLowerCase() === n.toLowerCase())) return 'Another layer is called that.';
+    return '';
+}
+function freeName(base) {
+    let n = base, i = 2;
+    while (nameProblem(n, null)) n = base.slice(0, 13) + ' ' + i++;
+    return n;
+}
+function freeFile(name) {
+    const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'layer';
+    const used = new Set(KM.layers.map(L => L.file.toLowerCase()));
+    let f = base + '.json', i = 2;
+    while (used.has(f)) f = base + '-' + i++ + '.json';
+    return f;
+}
+const kmHold = () => Array.isArray(KM.index && KM.index.hold_keys) ? {file: null, hold: true,
+    data: {name: 'HOLD+KEY', keys: KM.index.hold_keys, encoder: {label: ''}}} : null;
+// every layer the editor shows: the regular ones, HOLD+KEY, then the secret layers (secret.html)
+const kmAll = () => { const h = kmHold(); return KM.layers.concat(h ? [h] : [], (typeof SECRETS !== 'undefined' ? SECRETS.list : []).filter(Boolean)); };
+const kmLines = () => PAD.KEY_LINES.includes(KM.settings.key_lines) ? KM.settings.key_lines : 'grid';
+const kmLockBoxes = () => KM.settings.lock_boxes !== false;
+
+// the keys of a layer as the drawing wants them
+function viewKeys(layer) {
+    const keys = [];
+    for (let k = 0; k < 8; k++) {
+        const key = (layer.data.keys || [])[k];
+        keys.push(key ? {label: key.label || '', pic: pictureOf(key.pic)} : null);
+    }
+    return keys;
+}
+function drawLayerOf(layer) {
+    const enc = layer.secret ? layer.secret + '/' + SECRETS.list.length : (layer.data.encoder || {}).label || '';     // (a secret page: which, as the pad shows)
+    const bm = drawLayerView(layer.data.name, enc, viewKeys(layer), kmLines(), kmLockBoxes());
+    if (layer.hold) bm.d = bm.d.map(v => v ? 0 : 1);           // (the pad shows HOLD+KEY inverted, black on white)
+    return bm;
+}
+
+// ─── an action in words (the key panel) ───
+const ACTION_KINDS = ['key', 'combo', 'text', 'media', 'open', 'sequence', 'layer', 'tool', 'scroll', 'mouse', 'click', 'delay', 'number', 'stamp'];
+// a date / time format filled in (as extras.stamp_text on the pad): for showing what a stamp key types
+const STAMP_TOKENS = ['YYYY', 'AMPM', 'YY', 'MM', 'DD', 'HH', 'hh', 'mm', 'ss', 'M', 'D', 'H', 'h'];
+// "+N" / "-N" at the end of a format = that many days from today (extras.split_days on the pad)
+function splitDays(fmt) {
+    const m = /^(?:(.*\S)\s+)?([+-])(\d{1,5})\s*$/.exec(fmt);       // (a space before it: "PO-123" stays as it is)
+    if (!m) return [fmt, 0];
+    return [m[1] || 'MM/DD/YYYY', (m[2] === '-' ? -1 : 1) * +m[3]];
+}
+// lowercase as people write it: yyyy / yy / dd, and mm as the month unless the format has hours (h:mm); "+ 180" = "+180"
+function normalStamp(fmt) {
+    let f = fmt.replace(/\s([+-])\s+(\d{1,5})\s*$/, ' $1$2').replace(/yyyy/g, 'YYYY').replace(/(^|[^Y])yy(?!y)/g, '$1YY').replace(/dd/g, 'DD');
+    if (!/[Hh]/.test(f)) f = f.replace(/mm/g, 'MM');
+    return f;
+}
+function stampText(fmt, d = new Date()) {
+    const [f, days] = splitDays(fmt);
+    if (days) { d = new Date(d); d.setDate(d.getDate() + days); }
+    fmt = f;
+    const p = n => String(n).padStart(2, '0'), h12 = d.getHours() % 12 || 12;
+    const v = {YYYY: d.getFullYear(), YY: p(d.getFullYear() % 100), MM: p(d.getMonth() + 1), M: d.getMonth() + 1, DD: p(d.getDate()), D: d.getDate(),
+        HH: p(d.getHours()), H: d.getHours(), hh: p(h12), h: h12, mm: p(d.getMinutes()), ss: p(d.getSeconds()), AMPM: d.getHours() < 12 ? 'AM' : 'PM'};
+    let out = '', i = 0;
+    while (i < fmt.length) {
+        const t = STAMP_TOKENS.find(t => fmt.startsWith(t, i));
+        if (t) { out += v[t]; i += t.length; } else out += fmt[i++];
+    }
+    return out;
+}
+const MOD_NAMES = {CONTROL: 'Ctrl', LEFT_CONTROL: 'Ctrl', RIGHT_CONTROL: 'Right Ctrl', SHIFT: 'Shift', LEFT_SHIFT: 'Shift', RIGHT_SHIFT: 'Right Shift',
+    ALT: 'Alt', LEFT_ALT: 'Alt', RIGHT_ALT: 'AltGr', OPTION: 'Alt', GUI: 'Win', WINDOWS: 'Win', LEFT_GUI: 'Win', RIGHT_GUI: 'Win', COMMAND: 'Win'};
+const KEY_WORDS = {ZERO: '0', ONE: '1', TWO: '2', THREE: '3', FOUR: '4', FIVE: '5', SIX: '6', SEVEN: '7', EIGHT: '8', NINE: '9',
+    ENTER: 'Enter', RETURN: 'Enter', ESCAPE: 'Esc', BACKSPACE: 'Backspace', TAB: 'Tab', SPACE: 'Space', SPACEBAR: 'Space',
+    UP_ARROW: '↑', DOWN_ARROW: '↓', LEFT_ARROW: '←', RIGHT_ARROW: '→', PAGE_UP: 'Page Up', PAGE_DOWN: 'Page Down', DELETE: 'Delete'};
+const MEDIA_WORDS = {PREV: 'Previous track', NEXT: 'Next track', PLAYPAUSE: 'Play / pause', STOP: 'Stop', EJECT: 'Eject',
+    FAST_FORWARD: 'Fast forward', REWIND: 'Rewind', MUTE: 'Mute', VOL_UP: 'Volume up', VOL_DN: 'Volume down',
+    BRIGHTNESS_UP: 'Screen brighter', BRIGHTNESS_DOWN: 'Screen dimmer'};
+const keyWord = k => MOD_NAMES[k] || KEY_WORDS[k] || (k.length === 1 ? k : k[0] + k.slice(1).toLowerCase().replace(/_/g, ' '));
+function actionOf(obj) {
+    if (!obj) return null;
+    for (const k of ACTION_KINDS) if (obj[k] !== undefined) return {kind: k, value: obj[k]};
+    return null;
+}
+// [kind label, [chips], detail text]
+function describe(obj) {
+    const a = actionOf(obj);
+    if (!a) return ['Nothing', [], 'A label only: the key does nothing.'];
+    const v = a.value;
+    switch (a.kind) {
+        case 'key': return ['Keys', [keyWord(v)], ''];
+        case 'combo': return ['Keys', v.map(keyWord), ''];
+        case 'text': return ['Text', [], 'Types: “' + v + '”'];
+        case 'media': return ['Media', [], MEDIA_WORDS[v] || v];
+        case 'open': return ['Open', [], v];
+        case 'sequence': return ['Macro', [], v.length + ' step' + (v.length === 1 ? '' : 's')];
+        case 'layer': return ['Layer', [], 'Go to ' + v];
+        case 'tool': return ['Pad function', [], String(v).replace(/_/g, ' ')];
+        case 'scroll': return ['Mouse', [], 'Scroll ' + (v > 0 ? 'up ' : 'down ') + Math.abs(v)];
+        case 'mouse': return ['Mouse', [], 'Move ' + v[0] + ', ' + v[1]];
+        case 'click': return ['Mouse', [], v + ' click'];
+        case 'delay': return ['Wait', [], v + ' s'];
+        case 'number': return ['Number', [], 'Types the next ' + v + ' number (1, 2, 3…)'];
+        case 'stamp': { const n = splitDays(v)[1]; return ['Date / time', [], 'Types it like ' + stampText(v) + (n ? ` (${Math.abs(n)} days ${n > 0 ? 'from today' : 'ago'})` : '')]; }
+    }
+    return [a.kind, [], ''];
+}
+</script>

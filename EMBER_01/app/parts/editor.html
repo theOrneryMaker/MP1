@@ -1,0 +1,80 @@
+<script>
+// ─── The editor (layout A): layers | the pad's screen + encoder | the selected key ───
+// The key panel is keyedit.html; live.html sends the changes.
+const SCREEN_S = 4;                         // pad pixels -> screen pixels (512 x 256)
+const SEL = {layer: 0, key: 0};             // key: 0-7, or 'layer' (the status row: the layer and its encoder)
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+
+function renderThumbs() {
+    const all = kmAll(), padLayer = Link.pad && Link.pad.layer;
+    $('thumbs').innerHTML = all.map((L, i) => `<button class="thumb${i === SEL.layer ? ' on' : ''}" type="button" data-layer="${i}"
+        aria-pressed="${i === SEL.layer}"${L.hold || L.secret ? '' : ' draggable="true" title="Drag to move it"'}><canvas width="256" height="128" data-thumb="${i}"></canvas>
+        <span>${L.secret ? 'Secret page ' + L.secret + ' · ' : ''}${esc(L.data.name)}${!L.hold && !L.secret && L.data.name === KM.index.home ? ' · home' : ''}${!L.hold && L.data.name === padLayer ? ' · on the pad' : ''}</span></button>
+        ${i === SEL.layer && !L.hold ? `<div class="row thumbacts"><button class="btn small" type="button" data-lact="edit" aria-pressed="${SEL.key === 'layer'}">Layer settings</button>
+          <button class="btn small" type="button" data-lact="delete" ${KM.layers.length > 1 || L.secret ? '' : 'disabled title="The last layer can\'t be deleted"'}>Delete…</button></div>
+          ${ASKDEL.at === L ? `<div class="msg warn" id="thumbAsk">${deleteAskText(i)}
+            <div class="row" style="margin-top:8px"><button class="btn small" type="button" data-lact="delyes">Delete it</button>
+            <button class="btn small" type="button" data-lact="delno">Keep it</button></div></div>` : ''}` : ''}`).join('');
+    document.querySelectorAll('canvas[data-thumb]').forEach(c => paintBitmap(c, drawLayerOf(all[+c.dataset.thumb]), 2));
+    $('addLayer').disabled = KM.layers.length >= 24;
+}
+function renderScreen() {
+    const L = kmAll()[SEL.layer];
+    if (!L) return;
+    paintBitmap($('screen'), drawLayerOf(L), SCREEN_S, typeof SEL.key === 'number' ? SEL.key : null);
+    const e = L.data.encoder || {};
+    if (L.secret) { $('encInfo').innerHTML = `<b>Secret page ${L.secret} of ${SECRETS.list.length}</b><span>Turn the encoder for the other pages (it sends nothing here).</span>`; return; }
+    if (L.hold) { $('encInfo').innerHTML = '<b>HOLD+KEY</b><span>Hold the encoder and press a key: these run instead.</span>'; return; }
+    const turn = a => a ? (d => d[0] + (d[1].length ? ': ' + d[1].join(' + ') : '') + (d[2] ? ': ' + d[2] : ''))(describe(a)) : 'nothing';
+    $('encInfo').innerHTML = `<b>Encoder: ${esc(e.label || '(no label)')}</b><span>Turn right: ${esc(turn(e.cw))} · left: ${esc(turn(e.ccw))}</span>
+        <span>${e.accel ? 'Speeds up when turned fast' : 'No speed-up'}</span>`;
+}
+// (the key panel: keyedit.html)
+function renderEditor() {
+    pendingBox();
+    secretBox();
+    drawAllButton();
+    renderThumbs();
+    renderScreen();
+    keyPanel();
+}
+const ASKDEL = {at: null};                  // the layer whose Delete… question shows in the layer column
+function select(layer, key) {
+    if (layer != null && layer !== SEL.layer) ASKDEL.at = null;
+    if (layer != null) SEL.layer = layer;
+    if (key !== undefined) SEL.key = key;
+    renderEditor();
+}
+$('thumbs').addEventListener('click', e => {
+    const a = e.target.closest('[data-lact]');
+    if (a) {                                // the selected layer's own buttons: its settings, or delete it (asks first)
+        select(null, 'layer');
+        const act = a.dataset.lact;         // (Delete… asks right there, under the button)
+        if (act === 'delete') ASKDEL.at = kmAll()[SEL.layer];
+        else if (act === 'delno') ASKDEL.at = null;
+        else if (act === 'delyes') { ASKDEL.at = null; doDelete(SEL.layer); return; }
+        renderThumbs();
+        if ($('thumbAsk')) $('thumbAsk').scrollIntoView({block: 'nearest'});
+        return;
+    }
+    const b = e.target.closest('[data-layer]');
+    if (b) select(+b.dataset.layer, typeof SEL.key === 'number' || kmAll()[+b.dataset.layer].hold ? (typeof SEL.key === 'number' ? SEL.key : 0) : 'layer');
+});
+$('screen').addEventListener('click', e => {
+    const r = e.target.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * PAD.W, y = (e.clientY - r.top) / r.height * PAD.H;
+    if (y < PAD.ROW_Y[0]) return select(null, kmAll()[SEL.layer].hold ? SEL.key : 'layer');
+    const col = Math.min(3, Math.floor(x / 32)), row = y < PAD.ROW_Y[1] ? 0 : 1;
+    select(null, row * 4 + col);
+});
+document.addEventListener('keydown', e => {
+    if ($('editor').hidden || e.target.closest('input, textarea, select') || (e.ctrlKey || e.metaKey)) return;
+    const n = kmAll().length;
+    if (e.key === 'ArrowRight' && typeof SEL.key === 'number') select(null, (SEL.key + 1) % 8);
+    else if (e.key === 'ArrowLeft' && typeof SEL.key === 'number') select(null, (SEL.key + 7) % 8);
+    else if (e.key === 'ArrowDown') select((SEL.layer + 1) % n);
+    else if (e.key === 'ArrowUp') select((SEL.layer + n - 1) % n);
+    else return;
+    e.preventDefault();
+});
+</script>

@@ -1,0 +1,287 @@
+<script>
+// ─── The key panel: edit the selected key, live (live.html sends every change) ───
+// Label, action (Nothing / Keys / Text / Media / Open / Layer / Pad function / Mouse; a macro shows its
+// steps until the recorder, step 6.8), repeat / confirm. The picture is edited in step 6.4.
+const MOD_OF = {CONTROL: 'CONTROL', LEFT_CONTROL: 'CONTROL', RIGHT_CONTROL: 'CONTROL', SHIFT: 'SHIFT', LEFT_SHIFT: 'SHIFT',
+    RIGHT_SHIFT: 'SHIFT', ALT: 'ALT', LEFT_ALT: 'ALT', RIGHT_ALT: 'ALT', OPTION: 'ALT', GUI: 'GUI', WINDOWS: 'GUI', LEFT_GUI: 'GUI',
+    RIGHT_GUI: 'GUI', COMMAND: 'GUI'};
+const SYMBOL_WORDS = {MINUS: '-', EQUALS: '=', LEFT_BRACKET: '[', RIGHT_BRACKET: ']', BACKSLASH: '\\', SEMICOLON: ';', QUOTE: '\'',
+    GRAVE_ACCENT: '`', COMMA: ',', PERIOD: '.', FORWARD_SLASH: '/', APPLICATION: 'Menu key', PRINT_SCREEN: 'Print Screen'};
+const keyName = k => SYMBOL_WORDS[k] || {RIGHT_GUI: 'Right Win', RIGHT_ALT: 'Right Alt'}[k] || (k.startsWith('KEYPAD_') ? 'Pad ' + keyWord(k.slice(7)) : keyWord(k));
+// a pressed key (KeyboardEvent.code) -> the pad's key name
+function codeToKey(code) {
+    let m;
+    if ((m = /^Key([A-Z])$/.exec(code))) return m[1];
+    if ((m = /^Digit(\d)$/.exec(code))) return DIGITS[+m[1]];
+    if ((m = /^F(\d+)$/.exec(code))) return 'F' + m[1];
+    if ((m = /^Numpad(\d)$/.exec(code))) return 'KEYPAD_' + DIGITS[+m[1]];
+    return {ControlLeft: 'CONTROL', ControlRight: 'RIGHT_CONTROL', ShiftLeft: 'SHIFT', ShiftRight: 'RIGHT_SHIFT', AltLeft: 'ALT',
+        AltRight: 'RIGHT_ALT', MetaLeft: 'GUI', MetaRight: 'RIGHT_GUI', OSLeft: 'GUI', OSRight: 'RIGHT_GUI',
+        Enter: 'ENTER', Escape: 'ESCAPE', Backspace: 'BACKSPACE', Tab: 'TAB', Space: 'SPACE', Minus: 'MINUS', Equal: 'EQUALS',
+        BracketLeft: 'LEFT_BRACKET', BracketRight: 'RIGHT_BRACKET', Backslash: 'BACKSLASH', Semicolon: 'SEMICOLON', Quote: 'QUOTE',
+        Backquote: 'GRAVE_ACCENT', Comma: 'COMMA', Period: 'PERIOD', Slash: 'FORWARD_SLASH', CapsLock: 'CAPS_LOCK',
+        PrintScreen: 'PRINT_SCREEN', ScrollLock: 'SCROLL_LOCK', Pause: 'PAUSE', Insert: 'INSERT', Home: 'HOME', PageUp: 'PAGE_UP',
+        Delete: 'DELETE', End: 'END', PageDown: 'PAGE_DOWN', ArrowRight: 'RIGHT_ARROW', ArrowLeft: 'LEFT_ARROW', ArrowDown: 'DOWN_ARROW',
+        ArrowUp: 'UP_ARROW', NumLock: 'KEYPAD_NUMLOCK', NumpadDivide: 'KEYPAD_FORWARD_SLASH', NumpadMultiply: 'KEYPAD_ASTERISK',
+        NumpadSubtract: 'KEYPAD_MINUS', NumpadAdd: 'KEYPAD_PLUS', NumpadEnter: 'KEYPAD_ENTER', NumpadDecimal: 'KEYPAD_PERIOD',
+        ContextMenu: 'APPLICATION'}[code] || null;
+}
+const PAD_FUNCTIONS = PADLIST.functions.filter(f => f[0] !== 'none');     // (gestures.py: the pad's own list)
+const KINDS = [['none', 'Nothing'], ['keys', 'Keys'], ['text', 'Text'], ['sequence', 'Macro (several steps)'], ['media', 'Media'], ['open', 'Open (app or web address)'],
+    ['layer', 'Go to a layer'], ['tool', 'Pad function'], ['mouse', 'Mouse'], ['number', 'Number (counts up)'], ['stamp', 'Date / time']];
+const STAMP_PRESETS = ['MM/DD/YYYY', 'M/D/YYYY', 'MM/DD/YY', 'YYYY-MM-DD', 'h:mm AMPM', 'HH:mm', 'MM/DD/YYYY h:mm AMPM'];
+const REPEATABLE = ['media', 'scroll', 'mouse', 'text', 'sequence'];
+
+// the action of a key -> the editor's kind
+function kindOf(key) {
+    const a = actionOf(key);
+    if (!a) return 'none';
+    return {key: 'keys', combo: 'keys', scroll: 'mouse', click: 'mouse', mouse: 'mouse'}[a.kind] || a.kind;
+}
+function splitCombo(key) {
+    const list = key.combo ? key.combo.slice() : key.key ? [key.key] : [];
+    const mods = [], rest = [];
+    for (const k of list) (MOD_OF[k] ? mods.push(MOD_OF[k]) : rest.push(k));
+    return {mods, main: rest[0] || '', extra: rest.slice(1)};
+}
+function withoutAction(key) {
+    const out = {};
+    for (const f of ['label', 'pic']) if (key[f] !== undefined) out[f] = key[f];
+    return out;
+}
+
+let editing = null;                         // {layer, k}: the key the panel was drawn for
+let labelTimer = null;
+
+function keyPanel() {
+    const panel = $('keyPanel');
+    const L = kmAll()[SEL.layer];
+    if (!L) { panel.innerHTML = ''; return; }
+    if (REC.on) recordStop($('fAction'));    // (the panel is redrawn: a recording ends, its steps kept)
+    if (SEL.key === 'layer') { editing = null; layerPanel(L); return; }
+    const k = SEL.key, key = keyOf(SEL.layer, k);
+    if (!editing || editing.layer !== SEL.layer || editing.k !== k) { PICS.mode = null; PICS.query = ''; }     // (another key: its own picture mode, a fresh icon search)
+    editing = {layer: SEL.layer, k};
+    const head = `<div class="row"><h3>${esc(L.data.name)} · key ${k + 1}</h3><span class="sub" style="margin-left:auto">← → between keys</span></div>`;
+    if (!key) {
+        panel.innerHTML = head + `<div class="msg">An empty key: it shows nothing and does nothing.</div>
+            <div><button class="btn main" type="button" id="addKey">Add a key here</button></div>${sharePanelKey()}<div class="live" id="liveBar"></div>`;
+        $('addKey').onclick = () => { changeKey(SEL.layer, k, {label: 'New'}); keyPanel(); setTimeout(() => $('fLabel').select(), 0); };
+        liveBar();
+        return;
+    }
+    const kind = kindOf(key);
+    const pic = pictureOf(key.pic);
+    panel.innerHTML = head + `
+        <div style="display:grid;gap:6px"><label class="lbl" for="fLabel">Label</label>
+          <div class="row"><input class="field" id="fLabel" style="flex:1" maxlength="40" value="${esc(key.label || '')}" autocomplete="off">
+            <canvas class="pix" id="cellPreview"></canvas></div>
+          <span class="sub" id="fitHint"></span></div>
+        ${pictureSection(key)}
+        <div style="display:grid;gap:8px"><label class="lbl" for="fKind">Action</label>
+          <select class="field" id="fKind">${KINDS.map(([v, t]) => `<option value="${v}"${v === kind ? ' selected' : ''}>${t}</option>`).join('')}</select>
+          <div id="fAction" style="display:grid;gap:8px"></div>
+          <span class="sub" id="actionHint"></span></div>
+        <div class="flags">
+          <label><input type="checkbox" id="fRepeat"${key.repeat ? ' checked' : ''}> Repeat while held</label>
+          <label><input type="checkbox" id="fConfirm"${key.confirm ? ' checked' : ''}> Hold to confirm</label></div>
+        ${sharePanelKey()}
+        <div><button class="btn" type="button" id="clearKey">Clear this key</button></div>
+        <div class="live" id="liveBar"></div>`;
+    actionForm(kind, key);
+    pictureWire(key);
+    previews();
+    liveBar();
+    $('fLabel').oninput = () => {
+        previews(true);
+        clearTimeout(labelTimer);
+        labelTimer = setTimeout(() => commit('label'), 350);
+    };
+    $('fLabel').onblur = () => { if (labelTimer) { clearTimeout(labelTimer); commit('label'); } };
+    $('fKind').onchange = () => {
+        const v = $('fKind').value, k = current();
+        actionForm(v, kindOf(k) === v ? k : withoutAction(k));     // (the same kind again: keep its action)
+        commit();
+    };
+    $('fRepeat').onchange = $('fConfirm').onchange = e => {
+        if (e.target.checked) (e.target.id === 'fRepeat' ? $('fConfirm') : $('fRepeat')).checked = false;     // (one or the other)
+        commit();
+    };
+    $('clearKey').onclick = () => { changeKey(SEL.layer, k, null); keyPanel(); };
+}
+function current() { return keyOf(editing.layer, editing.k) || {}; }
+
+// up to 4 keys pressed together: dropdown slots joined by "+", and Capture (hold the keys together).
+// done(list) gets the new list after each change (modifiers first after a capture).
+function comboPicker(box, list, done, noCapture) {
+    const options = chosen => KEY_GROUPS.map(([g, ks]) => `<optgroup label="${g}">${ks.map(x =>
+        `<option value="${x}"${x === chosen ? ' selected' : ''}>${esc(keyName(x))}</option>`).join('')}</optgroup>`).join('');
+    const slots = list.length < 4 ? list.concat(['']) : list;
+    box.innerHTML = `<div class="row">${slots.map((k, n) => `${n ? '<span class="sub">+</span>' : ''}<select class="field slot" data-slot="${n}" style="width:auto">
+          <option value="">${n < list.length ? '(remove)' : n ? 'add key…' : 'choose…'}</option>${options(k)}</select>`).join('')}</div>
+        ${noCapture ? '' : `<div class="row"><button type="button" class="btn small capture">Capture…</button>
+          <span class="sub captureHint">Click, then hold the keys together (up to 4).</span></div>`}`;
+    box.querySelectorAll('.slot').forEach(sl => sl.onchange = () => {
+        const l = list.slice(), n = +sl.dataset.slot;
+        if (sl.value) l[n] = sl.value; else l.splice(n, 1);
+        done(l.filter(k => MOD_OF[k]).concat(l.filter(k => !MOD_OF[k])).slice(0, 4));     // (modifiers first)
+    });
+    const btn = box.querySelector('.capture'), hint = box.querySelector('.captureHint');
+    if (!btn) return;
+    btn.onclick = () => {
+        const held = new Set(), got = [];
+        btn.textContent = 'Hold the keys now…';
+        btn.setAttribute('aria-pressed', 'true');
+        const down = e => {
+            const name = codeToKey(e.code);
+            e.preventDefault(); e.stopPropagation();
+            if (!name) return;
+            held.add(e.code);
+            if (!got.includes(name) && got.length < 4) got.push(name);
+            hint.textContent = got.map(keyName).join(' + ');
+        };
+        const up = e => {
+            e.preventDefault(); e.stopPropagation();
+            held.delete(e.code);
+            if (held.size || !got.length) return;
+            document.removeEventListener('keydown', down, true);
+            document.removeEventListener('keyup', up, true);
+            done(got.filter(k => MOD_OF[k]).concat(got.filter(k => !MOD_OF[k])));
+        };
+        document.addEventListener('keydown', down, true);
+        document.addEventListener('keyup', up, true);
+    };
+}
+
+// the action's own fields, for one kind
+function actionForm(kind, key) {
+    const box = $('fAction');
+    const a = actionOf(key);
+    const sel = (id, opts, value) => `<select class="field" id="${id}">${opts.map(([v, t]) => `<option value="${esc(v)}"${v === value ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+    if (kind === 'keys') {
+        const list = key.combo ? key.combo.slice(0, 4) : key.key ? [key.key] : [];
+        box.dataset.list = JSON.stringify(list);
+        comboPicker(box, list, l => { box.dataset.list = JSON.stringify(l); commit(); actionForm('keys', current()); });
+    } else if (kind === 'text') {
+        box.innerHTML = `<textarea class="field" id="fText" rows="3" placeholder="What the key types">${esc(a && a.kind === 'text' ? a.value : '')}</textarea>`;
+        $('fText').oninput = () => { clearTimeout(labelTimer); labelTimer = setTimeout(() => commit('text'), 400); };
+    } else if (kind === 'media') {
+        box.innerHTML = sel('fMedia', Object.entries(MEDIA_WORDS), a && a.kind === 'media' ? a.value : 'PLAYPAUSE');
+        $('fMedia').onchange = () => commit();
+    } else if (kind === 'open') {
+        box.innerHTML = `<input class="field" id="fOpen" placeholder="https://… or a program, like notepad.exe" value="${esc(a && a.kind === 'open' ? a.value : '')}">
+            <span class="sub">A web address opens in the browser while the page is connected; anything else goes to the Windows Run box.</span>`;
+        $('fOpen').oninput = () => { clearTimeout(labelTimer); labelTimer = setTimeout(() => commit('open'), 400); };
+    } else if (kind === 'layer') {
+        box.innerHTML = sel('fLayer', KM.layers.map(L => [L.data.name, L.data.name]), a && a.kind === 'layer' ? a.value : KM.layers[0].data.name);
+        $('fLayer').onchange = () => commit();
+    } else if (kind === 'tool') {
+        box.innerHTML = sel('fTool', PAD_FUNCTIONS, a && a.kind === 'tool' ? a.value : 'layer_picker');
+        $('fTool').onchange = () => commit();
+    } else if (kind === 'mouse') {
+        const now = a && a.kind === 'scroll' ? (a.value > 0 ? 'up' : 'down') : a && a.kind === 'click' ? a.value : a && a.kind === 'mouse' ? 'move' : 'down';
+        const amount = a && a.kind === 'scroll' ? Math.abs(a.value) : 1;
+        box.innerHTML = `<div class="row">${sel('fMouse', [['up', 'Scroll up'], ['down', 'Scroll down'], ['left', 'Left click'], ['right', 'Right click'], ['middle', 'Middle click']], now)}
+            <input class="field" id="fAmount" type="number" min="1" max="50" value="${amount}" style="width:80px" title="How far"></div>`;
+        $('fMouse').onchange = $('fAmount').onchange = () => commit();
+    } else if (kind === 'sequence') {
+        macroForm(box, (a && a.kind === 'sequence' && a.value) || []);     // (macro.html)
+    } else if (kind === 'number') {
+        box.innerHTML = `<div class="row"><label class="lbl" for="fNumber">Counter</label>
+            <input class="field" id="fNumber" maxlength="16" style="width:160px" value="${esc(a && a.kind === 'number' ? a.value : 'LINE')}" autocomplete="off" spellcheck="false"></div>
+            <span class="sub">Each press types this counter's next number: 1, 2, 3… Keys with the same counter share it. Start it again
+              from 1 on the pad: TOOLS → Counter, pick it, Reset. In a CSV: {NEXT LINE}.</span>`;
+        $('fNumber').oninput = () => { clearTimeout(labelTimer); labelTimer = setTimeout(() => commit('number'), 400); };
+    } else if (kind === 'stamp') {
+        const [f, days] = splitDays(a && a.kind === 'stamp' ? a.value : STAMP_PRESETS[0]), custom = !STAMP_PRESETS.includes(f);
+        box.innerHTML = `<select class="field" id="fStampPick">${STAMP_PRESETS.map(p => `<option value="${esc(p)}"${p === f ? ' selected' : ''}>${esc(stampText(p))}  (${esc(p)})</option>`).join('')}
+              <option value=""${custom ? ' selected' : ''}>Your own…</option></select>
+            <input class="field" id="fStamp" value="${esc(f)}" maxlength="34" autocomplete="off" spellcheck="false"${custom ? '' : ' hidden'}>
+            <div class="row"><label class="lbl" for="fDays">Days from today</label>
+              <input class="field" id="fDays" type="number" min="-9999" max="9999" value="${days}" style="width:100px">
+              <span class="sub">0 = today, 180 = 180 days ahead, -30 = 30 days ago</span></div>
+            <span class="sub" id="fStampShow">Types: ${esc(stampText(f + (days ? (days > 0 ? ' +' : ' ') + days : '')))}</span>
+            <span class="sub">YYYY / YY year, MM / M month, DD / D day, HH / H hour (24), hh / h hour (12), mm minutes, ss seconds,
+              AMPM. The pad gets the time from this page when it connects. In a CSV: {DATE} or {DATE YYYY-MM-DD}.</span>`;
+        $('fStampPick').onchange = () => {
+            const v = $('fStampPick').value;
+            $('fStamp').hidden = !!v;
+            if (v) $('fStamp').value = v;
+            $('fStampShow').textContent = 'Types: ' + stampText(stampValue());
+            commit();
+        };
+        $('fStamp').oninput = $('fDays').oninput = () => { $('fStampShow').textContent = 'Types: ' + stampText(stampValue()); clearTimeout(labelTimer); labelTimer = setTimeout(() => commit('stamp'), 400); };
+    } else box.innerHTML = '';
+    $('fRepeat').disabled = !['media', 'text', 'mouse', 'sequence'].includes(kind) || kind === 'mouse' && box.querySelector('#fMouse') && !['up', 'down'].includes($('fMouse').value);
+}
+
+// the Date / time form -> the stamp value: the format (lowercase made pad-ready), then +N / -N days
+function stampValue() {
+    const f = normalStamp($('fStamp').value.trim()), n = Math.max(-9999, Math.min(9999, parseInt($('fDays').value, 10) || 0));
+    return n ? f + (n > 0 ? ' +' : ' ') + n : f;
+}
+// the key as the panel shows it now -> {key, problem}
+function fromPanel() {
+    const key = withoutAction(current());
+    key.label = $('fLabel').value;
+    const kind = $('fKind').value, box = $('fAction');
+    let problem = '';
+    if (kind === 'keys') {
+        const list = JSON.parse(box.dataset.list || '[]');
+        if (!list.length) problem = 'Choose the key it presses.';
+        else if (list.length === 1) key.key = list[0];
+        else key.combo = list;
+    } else if (kind === 'text') {
+        const t = $('fText').value;
+        if (!t) problem = 'Type what the key should type.'; else key.text = t;
+    } else if (kind === 'media') key.media = $('fMedia').value;
+    else if (kind === 'open') {
+        const t = $('fOpen').value.trim();
+        if (!t) problem = 'Type a web address or a program.'; else key.open = t;
+    } else if (kind === 'layer') key.layer = $('fLayer').value;
+    else if (kind === 'tool') key.tool = $('fTool').value;
+    else if (kind === 'mouse') {
+        const m = $('fMouse').value, n = Math.max(1, Math.min(50, parseInt($('fAmount').value, 10) || 1));
+        if (m === 'up' || m === 'down') key.scroll = m === 'up' ? n : -n; else key.click = m;
+    } else if (kind === 'sequence') {
+        const steps = JSON.parse(box.dataset.seq || '[]');
+        if (!steps.length) problem = 'Record the macro, or add its steps.'; else key.sequence = steps;
+    } else if (kind === 'number') {
+        const n = $('fNumber').value.trim().toUpperCase().replace(/[^A-Z0-9 _-]/g, '');
+        if (!n) problem = 'Give the counter a name, like LINE.'; else key.number = n;
+    } else if (kind === 'stamp') {
+        const f = stampValue();
+        if (!splitDays(f)[0].trim()) problem = 'Choose how the date looks.'; else key.stamp = f;
+    }
+    const a = actionOf(key);
+    if ($('fRepeat').checked && a && REPEATABLE.includes(a.kind)) key.repeat = true;
+    if ($('fConfirm').checked && a) key.confirm = true;
+    return {key, problem};
+}
+function commit(join) {
+    labelTimer = null;
+    if (!editing || !$('fKind')) return;
+    const {key, problem} = fromPanel();
+    $('actionHint').textContent = problem;
+    if (problem) return;                    // (sent once the action is complete)
+    if (JSON.stringify(key) === JSON.stringify(current())) return;
+    changeKey(editing.layer, editing.k, key, join ? join + ':' + editing.layer + ':' + editing.k : null);
+    previews();
+}
+// the key's cell as the pad will draw it, and the picture
+function previews(typing) {
+    const key = current(), pic = pictureOf(key.pic), label = $('fLabel').value;
+    paintBitmap($('cellPreview'), drawKey(label, pic, kmLines()), 3);
+    if (!typing && pic && $('picPreview')) paintBitmap($('picPreview'), pic, 5);
+    const w = PAD.CELL_W - (['boxes', 'dotted'].includes(kmLines()) ? 2 : 0);
+    let hint;
+    if (pic && (pic.h > PAD.PIC_H_LABEL || !label)) hint = 'The picture shows alone (the label still names the key here and in the player).';
+    else if (pic) hint = textWidth(label) > w ? 'Too long for one line next to a picture: the pad shows “' + fitText(label, w) + '”.' : 'Fits on one line with the picture.';
+    else {
+        const lines = wrap2(label, w);
+        hint = lines.join(' ').replace(/ /g, '') !== label.replace(/ /g, '') ? 'Too long: the pad shows “' + lines.join(' / ') + '”.' : lines.length === 2 ? 'Fits on two lines.' : 'Fits.';
+    }
+    $('fitHint').textContent = hint;
+}
+
+</script>

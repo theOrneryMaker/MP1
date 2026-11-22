@@ -1,0 +1,159 @@
+<script>
+// ─── Sharing on the phone: the pad's layers and keys out (Share… to Webex / email, copy, save to Downloads) and in
+// (a file, or pasted text). The same format as the page (share_format.html), so they go both ways. Secret pages and
+// HOLD+KEY never show here. A change is written as files, then the pad reads them again (as the page's restructure). ───
+const PH = {loaded: false, err: '', open: -1, incoming: null, busy: false};
+
+async function phLoad() {
+    Object.assign(PH, {loaded: false, err: '', incoming: null});
+    if (!Link.pad) return drawShare();
+    if (!/^ember/i.test(String(Link.pad.fw))) { PH.err = 'This pad runs the old firmware: update it to Ember first (above).'; return drawShare(); }
+    try { await loadKeymap(p => Link.readText(p)); PH.loaded = true; }
+    catch (e) { PH.err = e.message; }
+    drawShare();
+}
+function drawShare() {
+    const box = $('shList');
+    $('shAdd').hidden = !PH.loaded;
+    if (!Link.pad) { box.innerHTML = '<p class="hint">Connect to see the layers.</p>'; return; }
+    if (PH.err) { box.innerHTML = `<p class="warn">${esc(PH.err)}</p>`; return; }
+    if (!PH.loaded) { box.innerHTML = '<p class="hint">Reading the layers…</p>'; return; }
+    const dis = PH.busy || FU.busy ? ' disabled' : '';
+    const acts = (li, k) => ['share', 'copy', 'save'].map(a => `<button data-act="${a}" data-l="${li}" data-k="${k ?? ''}"${dis}>${{share: 'Share…', copy: 'Copy', save: 'Save'}[a]}</button>`).join('');
+    box.innerHTML = KM.layers.map((L, li) => {
+        const keys = L.data.keys || [], n = keys.filter(Boolean).length;
+        const open = PH.open === li;
+        return `<div class="lay"><div class="f"><span class="n">${esc(L.data.name)}<small>${n} key${n === 1 ? '' : 's'}${L.data.name === KM.index.home ? ' · home' : ''}</small></span>
+            <button data-open="${li}" aria-expanded="${open}"${dis}>${open ? 'Close' : 'Keys'}</button></div>
+            <div class="acts">${acts(li, null)}</div>
+            ${open ? '<div class="keys">' + [0, 1, 2, 3, 4, 5, 6, 7].map(k => keys[k]
+                ? `<div class="f"><span class="n">Key ${k + 1} · ${esc(keys[k].label || '(no label)')}<small>${esc(describe(keys[k])[0])}</small></span></div><div class="acts">${acts(li, k)}</div>`
+                : `<div class="f"><span class="n hint">Key ${k + 1} · empty</span></div>`).join('') + '</div>' : ''}</div>`;
+    }).join('') || '<p class="hint">No layers.</p>';
+}
+function shMsg(ok, text) {
+    $('shOut').innerHTML = `<p class="${ok ? 'good' : 'bad'}">${esc(text)}</p>`;
+}
+
+// ── out ──
+async function copyOut(text) {
+    if (APP && APP.copyText) { if (APP.copyText(text)) return; }
+    try { await navigator.clipboard.writeText(text); return; } catch (e) { /* the old way */ }
+    const t = document.createElement('textarea');
+    t.value = text; document.body.appendChild(t); t.select();
+    const ok = document.execCommand('copy');
+    t.remove();
+    if (!ok) throw new Error('the phone didn\'t allow copying');
+}
+async function shareOut(title, text) {
+    if (APP && APP.shareText) { APP.shareText(title, text); return; }
+    if (navigator.share) { await navigator.share({title, text}); return; }
+    await copyOut(text);
+}
+async function savePhone(name, bytes, mime) {
+    if (APP) { const why = APP.saveFile(name, bytesB64(bytes), mime); if (why) throw new Error(why); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], {type: mime})); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+async function shExport(act, li, k) {
+    const L = KM.layers[li], key = k === null ? null : (L.data.keys || [])[k];
+    if (!L || (k !== null && !key)) return;
+    const what = k === null ? 'the layer ' + L.data.name : '“' + key.label + '”';
+    const text = k === null ? layerText(L.data) : keyText(key);
+    const name = fileSafe(k === null ? L.data.name : key.label) + (k === null ? '.mp1layer.json' : '.mp1key.json');
+    try {
+        if (act === 'share') { await shareOut('MP1 Ember ' + (k === null ? 'layer ' : 'key ') + (k === null ? L.data.name : key.label), text); shMsg(true, `Sharing ${what}. ${SHARE_WARN}`); }
+        else if (act === 'copy') { await copyOut(text); shMsg(true, `Copied ${what}: paste it into Webex or an email. ${SHARE_WARN}`); }
+        else { await savePhone(name, new TextEncoder().encode(text + '\n'), 'application/json'); shMsg(true, `Saved ${name}${APP ? ' in Downloads' : ''}. ${SHARE_WARN}`); }
+    } catch (e) {
+        if (e && e.name === 'AbortError') return;
+        shMsg(false, 'Not shared: ' + e.message);
+    }
+}
+
+// ── in: a file or pasted text -> what it is, then where it goes ──
+function phIncoming(text, from) {
+    const r = shareParse(text);
+    PH.incoming = null;
+    if (!r || (r.kind === 'key' && !r.key)) { $('shIn').innerHTML = `<p class="bad">${esc(from)} isn't an MP1 key or layer.</p>`; return; }
+    PH.incoming = r;
+    const dis = PH.busy || FU.busy ? ' disabled' : '';
+    if (r.kind === 'layer') {
+        $('shIn').innerHTML = `<p>A layer: <strong>${esc(r.data.name)}</strong> (${(r.data.keys || []).filter(Boolean).length} keys${r.converted ? ', from the old firmware' : ''}). It's added as a new layer.</p>
+            <button class="primary" id="shPut"${dis}>Add it to the pad</button>`;
+    } else {
+        const opts = KM.layers.map((L, i) => `<option value="${i}">${esc(L.data.name)}</option>`).join('');
+        $('shIn').innerHTML = `<p>A key: <strong>${esc(r.key.label || '(no label)')}</strong> (${esc(describe(r.key)[0])}${r.converted ? ', from the old firmware' : ''}).</p>
+            <label class="pick">Layer <select id="shLayer">${opts}</select></label>
+            <label class="pick">Key <select id="shKey"></select></label>
+            <button class="primary" id="shPut"${dis}>Put it on the pad</button>`;
+        const keys = () => {
+            const L = KM.layers[+$('shLayer').value], ks = (L && L.data.keys) || [];
+            $('shKey').innerHTML = [0, 1, 2, 3, 4, 5, 6, 7].map(k => `<option value="${k}">${k + 1}${ks[k] ? ' · replaces ' + esc(ks[k].label || 'a key') : ' · empty'}</option>`).join('');
+            const free = [0, 1, 2, 3, 4, 5, 6, 7].find(k => !ks[k]);
+            if (free !== undefined) $('shKey').value = String(free);
+        };
+        $('shLayer').onchange = keys;
+        keys();
+    }
+    $('shPut').onclick = phPut;
+}
+async function phPut() {
+    const r = PH.incoming;
+    if (!r || PH.busy) return;
+    let writes, show, done;
+    if (r.kind === 'layer') {
+        if (KM.layers.length >= MAX_LAYERS) return shMsg(false, `The pad has ${MAX_LAYERS} layers already.`);
+        const d = JSON.parse(JSON.stringify(r.data));
+        d.ember = 'layer';
+        d.name = freeName(String(d.name || 'LAYER').slice(0, 16));
+        const L = {file: freeFile(d.name), data: d};
+        KM.layers.push(L);
+        writes = [L]; show = d.name; done = `Added the layer ${d.name}.`;
+    } else {
+        const L = KM.layers[+$('shLayer').value], k = +$('shKey').value;
+        const keys = (L.data.keys || []).slice();
+        while (keys.length < 8) keys.push(null);
+        keys[k] = JSON.parse(JSON.stringify(r.key));
+        L.data.keys = keys;
+        writes = [L]; show = L.data.name; done = `“${r.key.label}” is on ${L.data.name} key ${k + 1}.`;
+    }
+    const pic = (r.kind === 'key' ? [r.key] : r.data.keys || []).some(k => k && k.pic && k.pic.src && !k.pic.bits);
+    PH.busy = true; render();
+    try {
+        await phWrite(writes, show);
+        PH.incoming = null; $('shIn').innerHTML = ''; $('shPaste').value = '';
+        shMsg(true, done + (pic ? ' Its picture is drawn when you open MP1 Ember.html on a computer (the label shows until then).' : ''));
+    } catch (e) {
+        shMsg(false, 'Not added: ' + e.message);
+    } finally {
+        PH.busy = false;
+        await phLoad();                 // (what the pad has now)
+        render();
+    }
+}
+// the files, then the pad reads them again (one short sync)
+async function phWrite(writes, show) {
+    KM.index.layers = KM.layers.map(L => L.file);
+    Link.send({c: 'sync', on: true});
+    try {
+        for (const L of writes) await Link.writeText('layers/' + L.file, JSON.stringify(L.data));
+        await Link.writeText('keymap.json', JSON.stringify(KM.index));
+        const answer = Link.waitFor(x => x.t === 'reloaded', 10000);
+        Link.send({c: 'reload', show});
+        const m = await answer;
+        if (!m) throw new Error('The pad didn\'t answer.');
+        if (m.errors && m.errors.length) throw new Error('the pad found problems: ' + m.errors.join('; '));
+    } finally {
+        Link.send({c: 'sync', on: false});
+    }
+}
+
+document.addEventListener('click', e => {
+    const o = e.target.closest('[data-open]');
+    if (o) { const i = +o.dataset.open; PH.open = PH.open === i ? -1 : i; drawShare(); return; }
+    const b = e.target.closest('[data-act]');
+    if (b) shExport(b.dataset.act, +b.dataset.l, b.dataset.k === '' ? null : +b.dataset.k);
+});
+</script>

@@ -1,0 +1,145 @@
+<script>
+// ─── Sharing keys and layers: copy as text (paste into Webex / email), save / load files, Ctrl+V, drag and drop ───
+// Text and files are the same: a first line saying what it is, then JSON:
+//   MP1 Ember key "Order 4471" (...)      {"ember": "key", "key": {...a key as in a layer file}}
+//   MP1 Ember layer "EXCEL" (...)         {...the layer file: "ember": "layer", "name", "keys", ...}
+// FIRMWARE_04's key / layer files ({"mp1_key": 1, "key"} / {"mp1_layer": 1, "layer"}) are converted (from_v3.html).
+// A .csv dropped on a key builds a macro there (csvmacro.html).
+function toast(text, kind) {
+    const t = $('toast');
+    t.className = 'toast ' + (kind || '');
+    t.textContent = text;
+    t.hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => { t.hidden = true; }, kind === 'bad' ? 7000 : 5000);
+}
+
+
+// ── a key ──
+async function copyKey() {
+    const key = keyOf(SEL.layer, SEL.key);
+    if (!key) return toast('That key is empty: nothing to copy.');
+    try { await navigator.clipboard.writeText(keyText(key)); toast('Copied “' + key.label + '”: paste it into Webex or an email. ' + SHARE_WARN); }
+    catch (e) { toast('The browser didn\'t allow copying: use Save key… instead.', 'bad'); }
+}
+function saveKey() {
+    const key = keyOf(SEL.layer, SEL.key);
+    if (!key) return toast('That key is empty: nothing to save.');
+    downloadText(fileSafe(key.label) + '.mp1key.json', keyText(key) + '\n');
+    toast('Saved “' + key.label + '”. ' + SHARE_WARN);
+}
+function putKey(li, k, key, from) {
+    if (!kmAll()[li] || k === 'layer') return toast('Select a key on the pad drawing first.', 'bad');
+    changeKey(li, k, key ? JSON.parse(JSON.stringify(key)) : null);
+    SEL.layer = li; SEL.key = k;
+    keyPanel();
+    toast(`${key ? '“' + key.label + '”' : 'An empty key'} is on ${kmAll()[li].data.name} key ${k + 1}${from ? ' (' + from + ')' : ''}. Ctrl+Z undoes it.`);
+    if (key && key.pic && key.pic.src && !key.pic.bits) drawAllButton();
+}
+
+// ── a layer ──
+async function copyLayer() {
+    const L = kmAll()[SEL.layer];
+    if (!L || L.hold) return;
+    try { await navigator.clipboard.writeText(layerText(L.data)); toast('Copied the layer ' + L.data.name + '. ' + SHARE_WARN); }
+    catch (e) { toast('The browser didn\'t allow copying: use Save layer… instead.', 'bad'); }
+}
+function saveLayer() {
+    const L = kmAll()[SEL.layer];
+    if (!L || L.hold) return;
+    downloadText(fileSafe(L.data.name) + '.mp1layer.json', layerText(L.data) + '\n');
+    toast('Saved the layer ' + L.data.name + '. ' + SHARE_WARN);
+}
+function addLayerData(data, from) {
+    if (KM.layers.length >= MAX_LAYERS) return toast('The pad has ' + MAX_LAYERS + ' layers already.', 'bad');
+    const d = JSON.parse(JSON.stringify(data));
+    d.ember = 'layer';
+    d.name = freeName(String(d.name || 'LAYER').slice(0, 16));
+    const L = {file: freeFile(d.name), data: d};
+    const at = Math.min(KM.layers.length, (kmAll()[SEL.layer] && !kmAll()[SEL.layer].hold ? SEL.layer : KM.layers.length - 1) + 1);
+    KM.layers.splice(at, 0, L);
+    SEL.layer = at; SEL.key = 'layer';
+    restructure({writes: [L], show: d.name});
+    toast('Added the layer ' + d.name + (from ? ' (' + from + ')' : '') + '.');
+}
+
+// ── loading a file, pasting, dropping ──
+function pickFile(accept, then) {
+    const f = $('sharePick');
+    f.accept = accept;
+    f.value = '';
+    f.onchange = async () => { if (f.files[0]) then(f.files[0].name, await f.files[0].text()); };
+    f.click();
+}
+function useShared(text, where, from) {
+    const r = shareParse(text);
+    if (!r) return toast((from || 'That') + ' isn\'t an MP1 key or layer.', 'bad');
+    if (r.kind === 'layer') return addLayerData(r.data, from);
+    if (where && typeof where.k === 'number') return putKey(where.layer, where.k, r.key, from);
+    toast('That\'s a key: select a key on the pad drawing, then paste it.', 'bad');
+}
+document.addEventListener('paste', e => {
+    if ($('editor').hidden || (e.target.closest && e.target.closest('input, textarea, select'))) return;
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (!text || !/MP1|"ember"|mp1_key|mp1_layer/.test(text)) return;
+    e.preventDefault();
+    useShared(text, {layer: SEL.layer, k: SEL.key}, 'pasted');
+});
+// a file dropped on a key of the pad drawing (a key / a .csv) or on the Layers column (a layer)
+function dropKeyAt(e) {
+    const r = $('screen').getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width * PAD.W, y = (e.clientY - r.top) / r.height * PAD.H;
+    if (y < PAD.ROW_Y[0]) return null;
+    return (y < PAD.ROW_Y[1] ? 0 : 4) + Math.min(3, Math.floor(x / 32));
+}
+['dragover', 'drop'].forEach(type => $('editor').addEventListener(type, async e => {
+    if (!e.dataTransfer || ![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault();
+    if (type === 'dragover') return;
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    const text = await f.text(), onScreen = e.target.closest('#screen'), k = onScreen ? dropKeyAt(e) : null;
+    if (/\.(csv|tsv)$/i.test(f.name) || (!shareParse(text) && /[,;\t]/.test(text.split('\n')[0]))) {
+        if (k == null) return toast('Drop a .csv on a key of the pad drawing: it becomes that key\'s macro.', 'bad');
+        return csvOnKey(SEL.layer, k, f.name, text);
+    }
+    useShared(text, k == null ? null : {layer: SEL.layer, k}, f.name);
+}));
+// a .csv on a key: the key becomes a macro and the CSV builder opens with it
+function csvOnKey(li, k, name, text) {
+    SEL.layer = li; SEL.key = k;
+    const key = keyOf(li, k) || {label: name.replace(/\.(csv|tsv|txt)$/i, '').slice(0, 20)};
+    if (!keyOf(li, k)) changeKey(li, k, key);
+    keyPanel();
+    $('fKind').value = 'sequence';
+    actionForm('sequence', key.sequence ? key : {label: key.label});
+    csvBuilder($('fAction'), text);
+}
+
+// the buttons in the key panel and the layer panel
+function sharePanelKey() {
+    return `<div class="sharerow"><span class="lbl">Share</span>
+        <button class="btn small" type="button" data-share="copyKey">Copy key</button>
+        <button class="btn small" type="button" data-share="saveKey">Save key…</button>
+        <button class="btn small" type="button" data-share="loadKey">Load key…</button>
+        <span class="sub">or Ctrl+V a copied key · drop a key file or a .csv on the pad drawing</span></div>`;
+}
+function sharePanelLayer() {
+    return `<div class="sharerow"><span class="lbl">Share</span>
+        <button class="btn small" type="button" data-share="copyLayer">Copy layer</button>
+        <button class="btn small" type="button" data-share="saveLayer">Save layer…</button>
+        <button class="btn small" type="button" data-share="loadLayer">Load layer…</button>
+        <span class="sub">or Ctrl+V a copied layer · drop a layer file on the Layers column</span></div>`;
+}
+document.addEventListener('click', e => {
+    const b = e.target.closest('[data-share]');
+    if (!b) return;
+    const what = b.dataset.share;
+    if (what === 'copyKey') copyKey();
+    else if (what === 'saveKey') saveKey();
+    else if (what === 'copyLayer') copyLayer();
+    else if (what === 'saveLayer') saveLayer();
+    else if (what === 'loadKey') { const at = {layer: SEL.layer, k: SEL.key}; pickFile('.json,.txt', (n, t) => useShared(t, at, n)); }
+    else if (what === 'loadLayer') pickFile('.json,.txt', (n, t) => useShared(t, null, n));
+});
+</script>

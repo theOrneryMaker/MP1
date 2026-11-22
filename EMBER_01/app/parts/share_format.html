@@ -1,0 +1,27 @@
+<script>
+// ─── The share format (share.html; the phone page): a first line saying what it is, then JSON ───
+//   MP1 Ember key "Order 4471" (...)      {"ember": "key", "key": {...a key as in a layer file}}
+//   MP1 Ember layer "EXCEL" (...)         {...the layer file: "ember": "layer", "name", "keys", ...}
+// FIRMWARE_04's key / layer files ({"mp1_key": 1, "key"} / {"mp1_layer": 1, "layer"}) are converted (from_v3.html).
+const SHARE_WARN = 'Before you send it, check it holds nothing private.';
+
+const fileSafe = s => (String(s || '').replace(/[^A-Za-z0-9 _+.-]+/g, '_').trim() || 'key').slice(0, 40);
+const keyText = key => `MP1 Ember key "${(key && key.label) || ''}" (paste it into the MP1 Ember page: select a key, Ctrl+V)\n` + JSON.stringify({ember: 'key', key});
+const layerText = data => `MP1 Ember layer "${data.name}" (paste it into the MP1 Ember page: Ctrl+V with a layer selected adds it)\n` + JSON.stringify(data);
+
+// text from a file / the clipboard -> {kind: 'key', key} | {kind: 'layer', data} | null
+function shareParse(text) {
+    let o;
+    try { o = oldJson(text); } catch (e) { return null; }
+    if (!o || typeof o !== 'object') return null;
+    if (o.ember === 'key') return {kind: 'key', key: o.key || null};
+    if (o.ember === 'layer') return {kind: 'layer', data: o};
+    if ('mp1_key' in o) return {kind: 'key', key: o.key ? emberKey(o.key, o.key.fa || '', null, 'key', []) : null, converted: true};
+    if ('mp1_layer' in o && o.layer) {
+        const r = emberFromV3({index: {version: 3, layers: ['x'], home: o.layer.name}, layers: {x: {layer: o.layer}}, linkicons: null, settings: null});
+        const d = Object.values(r.layers)[0];
+        return d ? {kind: 'layer', data: d, converted: true} : null;
+    }
+    return null;
+}
+</script>

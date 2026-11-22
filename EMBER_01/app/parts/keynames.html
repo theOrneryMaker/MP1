@@ -1,0 +1,15 @@
+<script>
+// ─── The pad's key names, in groups (keyedit.html's picker; from_old.html's version 1 converter) ───
+const DIGITS = ['ZERO', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'];
+const KEY_GROUPS = [
+    ['Modifiers', ['CONTROL', 'SHIFT', 'ALT', 'GUI', 'RIGHT_CONTROL', 'RIGHT_SHIFT', 'RIGHT_ALT', 'RIGHT_GUI']],
+    ['Letters', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')],
+    ['Numbers', DIGITS.slice(1).concat(['ZERO'])],
+    ['Function keys', Array.from({length: 24}, (_, i) => 'F' + (i + 1))],
+    ['Moving around', ['UP_ARROW', 'DOWN_ARROW', 'LEFT_ARROW', 'RIGHT_ARROW', 'HOME', 'END', 'PAGE_UP', 'PAGE_DOWN', 'TAB']],
+    ['Editing', ['ENTER', 'ESCAPE', 'BACKSPACE', 'DELETE', 'INSERT', 'SPACE', 'CAPS_LOCK', 'PRINT_SCREEN', 'SCROLL_LOCK', 'PAUSE', 'APPLICATION']],
+    ['Symbols', ['MINUS', 'EQUALS', 'LEFT_BRACKET', 'RIGHT_BRACKET', 'BACKSLASH', 'SEMICOLON', 'QUOTE', 'GRAVE_ACCENT', 'COMMA', 'PERIOD', 'FORWARD_SLASH']],
+    ['Number pad', ['KEYPAD_NUMLOCK', 'KEYPAD_ZERO', 'KEYPAD_ONE', 'KEYPAD_TWO', 'KEYPAD_THREE', 'KEYPAD_FOUR', 'KEYPAD_FIVE', 'KEYPAD_SIX',
+        'KEYPAD_SEVEN', 'KEYPAD_EIGHT', 'KEYPAD_NINE', 'KEYPAD_PERIOD', 'KEYPAD_PLUS', 'KEYPAD_MINUS', 'KEYPAD_ASTERISK', 'KEYPAD_FORWARD_SLASH', 'KEYPAD_ENTER']],
+];
+</script>

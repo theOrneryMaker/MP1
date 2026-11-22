@@ -1,0 +1,177 @@
+<script>
+// ─── MP1 Link: the pad over Web Serial (ember/link.py on the pad: one JSON object per line) ───
+// Connect… asks for the port once; after that this page connects by itself to a port it was allowed.
+// A port that doesn't say hello within HELLO_WAIT_MS is the pad's console, not the Link.
+// In the MP1 phone app, window.MP1Serial (phone/serial.html) stands in for navigator.serial.
+const serialApi = () => window.MP1Serial || navigator.serial;
+const VENDORS = [0x2E8A, 0x239A];           // Raspberry Pi, Adafruit
+const HELLO_WAIT_MS = 2500;
+const REQUEST_MS = 8000;
+const Link = {
+    port: null, writer: null, reader: null, pad: null,     // pad: the last hello / state
+    paused: false,                                          // (the phone's update has the pad's console: no connecting)
+    helloWaiter: null, rid: 0, pending: {}, queue: Promise.resolve(),
+    listeners: [],
+    on(fn) { this.listeners.push(fn); },
+    emit(m) { for (const fn of this.listeners) { try { fn(m); } catch (e) { console.error(e); } } },
+
+    supported() { return !!window.MP1Serial || ('serial' in navigator && window.isSecureContext); },
+
+    async tryPort(p) {
+        try { await p.open({baudRate: 115200}); } catch (e) { return false; }
+        try { await p.setSignals({dataTerminalReady: true}); } catch (e) { /* not needed everywhere */ }
+        this.port = p;
+        this.writer = p.writable.getWriter();
+        const hello = new Promise(resolve => { this.helloWaiter = resolve; });
+        this.readLoop(p);
+        this.send({c: 'hello'});
+        const ok = await Promise.race([hello, new Promise(r => setTimeout(() => r(false), HELLO_WAIT_MS))]);
+        this.helloWaiter = null;
+        if (ok) return true;
+        await this.close();
+        return false;
+    },
+    async autoConnect() {
+        if (this.port || this.paused || !this.supported()) return false;
+        for (const p of await serialApi().getPorts()) {
+            const info = p.getInfo();
+            if (info.usbVendorId && !VENDORS.includes(info.usbVendorId)) continue;
+            if (await this.tryPort(p)) return true;
+        }
+        return false;
+    },
+    async connectNew() {
+        if (window.MP1Serial) {             // the app: Android's "allow" question, then the same as autoConnect
+            if (!await window.MP1Serial.allow().catch(() => false)) return null;
+            if (this.port) await this.close();
+            return await this.autoConnect();
+        }
+        let p;
+        try { p = await navigator.serial.requestPort({filters: VENDORS.map(v => ({usbVendorId: v}))}); }
+        catch (e) { return null; }          // cancelled
+        if (this.port) await this.close();
+        return await this.tryPort(p);
+    },
+    async close() {
+        const p = this.port;
+        this.port = null;
+        this.pad = null;
+        try { if (this.reader) await this.reader.cancel(); } catch (e) { /* gone */ }
+        try { if (this.writer) this.writer.releaseLock(); } catch (e) { /* gone */ }
+        this.writer = null;
+        try { if (p) await p.close(); } catch (e) { /* unplugged */ }
+        for (const id in this.pending) this.pending[id]({err: 'The pad went away.'});
+        this.pending = {};
+        this.emit({t: 'closed'});
+    },
+    async readLoop(p) {
+        const dec = new TextDecoder();
+        let buf = '';
+        while (p.readable && this.port === p) {
+            this.reader = p.readable.getReader();
+            try {
+                for (;;) {
+                    const {value, done} = await this.reader.read();
+                    if (done) break;
+                    buf += dec.decode(value, {stream: true});
+                    let i;
+                    while ((i = buf.indexOf('\n')) >= 0) {
+                        const line = buf.slice(0, i).trim();
+                        buf = buf.slice(i + 1);
+                        if (line.startsWith('{')) { try { this.message(JSON.parse(line)); } catch (e) { /* not ours */ } }
+                    }
+                    if (buf.length > 65536) buf = '';
+                }
+            } catch (e) {
+                break;                      // unplugged, or the pad restarted its USB
+            } finally {
+                try { this.reader.releaseLock(); } catch (e) { /* already */ }
+                this.reader = null;
+            }
+        }
+        if (this.port === p) {              // lost it: try again shortly (a restart, a replug)
+            await this.close();
+            setTimeout(() => this.autoConnect(), 1500);
+        }
+    },
+    async send(obj) {
+        if (!this.writer) return;
+        try { await this.writer.write(new TextEncoder().encode(JSON.stringify(obj) + '\n')); } catch (e) { /* the read loop notices */ }
+    },
+    message(m) {
+        if (m.t === 'hello') {
+            this.pad = m;
+            this.sendTime();
+            if (this.helloWaiter) this.helloWaiter(true);
+        } else if (m.t === 'state' && this.pad) {
+            Object.assign(this.pad, m);
+        } else if (m.t === 'r') {
+            const done = this.pending[m.id];
+            delete this.pending[m.id];
+            if (done) done(m);
+            return;
+        } else if (m.t === 'open') {        // a key's web address: open it here
+            let ok = false;
+            if (/^https?:/i.test(m.url)) { const w = window.open(m.url, '_blank'); ok = !!w; }
+            this.send({c: 'opened', id: m.id, ok});
+        }
+        this.emit(m);
+    },
+    // one request at a time (the pad reads one line per request)
+    request(obj) {
+        const run = () => new Promise((resolve, reject) => {
+            if (!this.pad) return reject(new Error('The pad isn\'t connected.'));
+            const id = ++this.rid;
+            const timer = setTimeout(() => { delete this.pending[id]; reject(new Error('The pad didn\'t answer.')); }, REQUEST_MS);
+            this.pending[id] = m => { clearTimeout(timer); m.err ? reject(Object.assign(new Error(m.err), {notFound: m.err === 'not found'})) : resolve(m); };
+            this.send(Object.assign({id}, obj));
+        });
+        const p = this.queue.then(run, run);
+        this.queue = p.catch(() => {});
+        return p;
+    },
+    async readText(path) { return new TextDecoder().decode(await this.readBytes(path)); },
+    async readBytes(path) {
+        const parts = [];
+        let off = 0;
+        for (;;) {
+            const r = await this.request({c: 'read', path, off});
+            const bytes = Uint8Array.from(atob(r.data), c => c.charCodeAt(0));
+            parts.push(bytes);
+            off += bytes.length;
+            if (r.eof || !bytes.length) break;
+        }
+        const all = new Uint8Array(off);
+        let at = 0;
+        for (const p of parts) { all.set(p, at); at += p.length; }
+        return all;
+    },
+    // save a file in pieces (linkfiles.py keeps the old one as .bak)
+    writeText(path, text) { return this.writeBytes(path, new TextEncoder().encode(text)); },
+    async writeBytes(path, bytes, progress) {
+        const xid = Math.floor(Math.random() * 1e9);
+        let off = 0;
+        do {
+            const part = bytes.subarray(off, off + 768);
+            let bin = '';
+            for (const b of part) bin += String.fromCharCode(b);
+            await this.request({c: 'write', path, off, data: btoa(bin), xid, total: bytes.length, last: off + part.length >= bytes.length});
+            off += part.length;
+            if (progress) progress(off, bytes.length);
+        } while (off < bytes.length);
+    },
+    // the computer's clock -> the pad (its date stamps and reminders; it keeps it until it's unplugged)
+    sendTime() {
+        const d = new Date(), yday = Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 864e5) + 1;
+        this.send({c: 'time', t: [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds(), (d.getDay() + 6) % 7, yday]});
+    },
+    // the next message that passes test(m), or null after ms
+    waitFor(test, ms) {
+        return new Promise(resolve => {
+            const fn = m => { if (test(m)) { this.listeners = this.listeners.filter(f => f !== fn); clearTimeout(t); resolve(m); } };
+            const t = setTimeout(() => { this.listeners = this.listeners.filter(f => f !== fn); resolve(null); }, ms);
+            this.on(fn);
+        });
+    },
+};
+</script>

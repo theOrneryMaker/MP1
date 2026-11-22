@@ -1,0 +1,68 @@
+<script>
+// ─── The phone page: status, connecting, the buttons ───
+function $(id) { return document.getElementById(id); }
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+
+function render() {
+    const pad = Link.pad, on = !!pad;
+    $('dot').classList.toggle('on', on);
+    $('title').innerHTML = 'MP1 Ember' + (APP && APP.version ? ` <small>app ${esc(APP.version())}</small>` : '');
+    $('info').innerHTML = on
+        ? `<dt>Firmware</dt><dd>${esc(fwName(pad.fw ?? '?'))}${/^ember/i.test(String(pad.fw)) ? '' : ' (old: update it below)'}</dd>` +
+          `<dt>Layers</dt><dd>${esc((pad.layers || []).join(', ') || '?')}</dd>` +
+          `<dt>Showing</dt><dd>${esc(pad.layer || '')}</dd><dt>Free memory</dt><dd>${pad.free ? kb(pad.free) : '?'}</dd>` +
+          ((pad.errors || []).length ? `<dt>Problems</dt><dd class="bad">${pad.errors.map(esc).join('<br>')}</dd>` : '')
+        : `<dt>Status</dt><dd>${FU.busy ? 'Updating…' : Link.port ? 'Connecting…' : 'Not connected'}</dd>`;
+    $('connectBtn').textContent = on ? 'Connect again' : 'Connect…';
+    const busy = FU.busy || PH.busy;
+    for (const id of ['connectBtn', 'fuBtn', 'bkBtn', 'fuPkgBtn', 'fuRestoreBtn', 'shFileBtn', 'shPasteBtn']) $(id).disabled = busy;
+    drawShare();
+}
+async function connect() {
+    if (FU.busy) return;
+    $('connectHint').textContent = 'Connecting…';
+    let ok = null;
+    try { ok = await Link.connectNew(); } catch (e) { ok = false; }
+    $('connectHint').innerHTML = Link.pad ? 'Connected.'
+        : ok === null ? '<strong>Not allowed, or no pad plugged in.</strong> Check the pad lights up on the phone (some cables and adapters only carry power), then Connect… and choose <strong>Allow</strong>.'
+        : '<strong>The pad didn\'t answer.</strong> If it has very old firmware (before 03), use Check the pad below: it works over the pad\'s console.';
+    render();
+}
+
+Link.on(m => {
+    if (m.t === 'hello') { render(); phLoad(); }
+    else if (m.t === 'closed') { PH.loaded = false; render(); }
+    else if (m.t === 'state' || m.t === 'reloaded') render();
+});
+if (window.MP1Serial) {
+    MP1Serial.addEventListener('connect', () => { setTimeout(fuBootCheck, 800); setTimeout(() => { if (!FU.busy && !Link.port) connect(); }, 1500); });
+    MP1Serial.addEventListener('disconnect', e => { if (Link.port && e.target === Link.port) Link.close(); });
+}
+if (APP) {
+    drawPkgs();
+    fuBootCheck();
+    setInterval(() => { if (!FU.busy) fuBootCheck(); }, 3000);
+} else {
+    $('noApp').hidden = false;
+    $('noApp').innerHTML = 'This is the MP1 phone app\'s page: updating a pad needs the app (MP1.apk). Sharing works here in Chrome if it can see the pad.';
+    for (const id of ['fuBtn', 'bkBtn', 'fuPkgBtn']) $(id).hidden = true;
+}
+$('connectBtn').addEventListener('click', connect);
+$('fuBtn').addEventListener('click', () => fuCheck(false));
+$('bkBtn').addEventListener('click', () => fuCheck(true));
+$('fuPkgBtn').addEventListener('click', () => $('fuPkgFile').click());
+$('fuPkgFile').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    try { FU.picked = await readPackage(new Uint8Array(await f.arrayBuffer()), f.name); await drawPkgs(); }
+    catch (err) { $('fuOut').innerHTML = `<p class="bad">${esc(f.name)}: ${esc(err.message)}</p>`; }
+});
+$('fuRestoreBtn').addEventListener('click', () => $('fuRestoreFile').click());
+$('fuRestoreFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) fuRestore(f); });
+$('shFileBtn').addEventListener('click', () => $('shFile').click());
+$('shFile').addEventListener('change', async e => { const f = e.target.files[0]; e.target.value = ''; if (f) phIncoming(await f.text(), f.name); });
+$('shPasteBtn').addEventListener('click', () => { const t = $('shPaste').value.trim(); if (t) phIncoming(t, 'What\'s pasted'); });
+render();
+Link.autoConnect().then(render);
+</script>

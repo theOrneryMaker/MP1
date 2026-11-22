@@ -1,0 +1,154 @@
+<script>
+// ─── Settings: the pad's 20 settings, in the pad menu's groups (PADLIST: made from the pad's own files) ───
+// Live: each change goes to the pad at once ({"c": "setting"}: link.py checks it, uses it, saves settings.json).
+// KM.settings holds only what differs from the defaults (as settings.json does).
+const SET_HELP = {
+    click_single: 'One click of the encoder: a layer list (the layer picker, layer keys or layer cards).', click_double: 'Two quick clicks.', click_triple: 'Three quick clicks.',
+    hold_turn_right: 'Hold the encoder and turn it right.', hold_turn_left: 'Hold the encoder and turn it left.',
+    encoder_reverse: 'Swap the turn directions.',
+    repeat_speed: 'How fast a held key repeats (keys with Repeat while held).', key_lines: 'The lines between the keys on the screen.',
+    screen_dim_minutes: 'Dims the screen after this long without use (0 = never).', screen_off_minutes: 'Turns the screen off (0 = never).',
+    lock_boxes: 'The C and N boxes on the top row while Caps Lock / Num Lock are on.',
+    light_scene: 'What the lights do (a layer can have its own).', light_color1: 'The scene\'s color.', light_color2: 'Its second color (scenes that use two).',
+    light_level: 'Brightness, 1-10.', lights_asleep: 'Keep the lights on while the screen is off.',
+    sounds: 'Where the pad beeps. On the pad\'s menu it\'s 1 / 0 in this order: 1001 = start-up and alarms.', sound_level: 'Volume, 1-10.',
+    secret_lock_seconds: 'A secret layer locks again after this long without use (0 = never).', jiggle_at_start: 'Start with the mouse jiggle on.',
+};
+const SET_WORDS = {grid: 'Grid', shelves: 'Shelves', boxes: 'Boxes', dotted: 'Dotted', slow: 'Slow', normal: 'Normal', fast: 'Fast',
+    off: 'Off', keys: 'Key clicks', everything: 'Everything'};
+const SOUND_PARTS = [['Start-up', 'Boot'], ['Changing layers', 'Layers'], ['Key clicks', 'Keys'], ['Alarms (timer, reminders)', 'Alarms']];     // (settings.py SOUND_PARTS)
+const SETQ = {waiting: [], busy: false, state: 'idle', note: ''};
+const setDefault = n => PADLIST.settings[n].default;
+const setValue = n => (n in KM.settings ? KM.settings[n] : setDefault(n));
+
+function settingControl(n) {
+    const def = PADLIST.settings[n], v = setValue(n), id = 'set_' + n;
+    const select = opts => `<select class="field" id="${id}" data-set="${n}">${opts.map(([o, t]) =>
+        `<option value="${esc(o)}"${o === v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+    if (n === 'sounds') return `<div class="row wrap">${SOUND_PARTS.map(([t, w], i) =>
+        `<label><input type="checkbox" data-soundbit="${i}"${v[i] === '1' ? ' checked' : ''}> ${t}</label>`).join('')}
+        <code class="sub" title="As the pad's menu shows it">${esc(v)}</code></div>`;
+    if (PADLIST.function_settings.includes(n)) return select(PADLIST.functions.filter(f => !def.allowed || def.allowed.includes(f[0])));
+    if (n === 'light_scene') return select(((Link.pad && Link.pad.scenes) || PADLIST.scenes).map(s => [s, nice(s)]));
+    if (n === 'light_color1' || n === 'light_color2')
+        return `<div class="row">${select(Object.keys(PADLIST.colors).map(c => [c, nice(c)]))}<span class="swatch" style="background:${swatch(v)}"></span></div>`;
+    if (typeof def.default === 'boolean')
+        return `<label class="switch"><input type="checkbox" id="${id}" data-set="${n}"${v ? ' checked' : ''}> ${v ? 'On' : 'Off'}</label>`;
+    if (typeof def.default === 'number') {
+        const unit = {screen_dim_minutes: 'min', screen_off_minutes: 'min', secret_lock_seconds: 's'}[n] || '';
+        return `<div class="row"><input class="field" type="number" id="${id}" data-set="${n}" min="${def.allowed[0]}" max="${def.allowed[1]}"
+            step="${PADLIST.step[n] || 1}" value="${v}" style="width:90px"><span class="sub">${unit}${unit && !v ? ' (never)' : ''}</span></div>`;
+    }
+    return select(def.allowed.map(o => [o, SET_WORDS[o] || nice(o)]));
+}
+function renderSettings() {
+    const hw = (Link.pad && Link.pad.hw) || null;
+    const fitted = g => !hw || (g !== 'Lights' || hw.lights) && (g !== 'Sound' || hw.sound);
+    $('settingsView').innerHTML = `<div class="setbar"><h2>Settings</h2><span class="sub">The same settings as the pad's TOOLS menu. Changes go to the pad at once.</span>
+          <div class="live" id="setBar"></div></div>
+        ${PADLIST.groups.map(([g, names]) => `<section class="panel"><h3>${esc(g)}${fitted(g) ? '' : ' <span class="sub">(not fitted on this pad)</span>'}</h3>
+          ${names.map(n => `<div class="setrow"><label class="setname" for="set_${n}">${esc(PADLIST.labels[n])}</label>
+            <div>${settingControl(n)}</div>
+            <button class="btn small" type="button" data-reset="${n}" ${setValue(n) === setDefault(n) ? 'hidden' : ''} title="Back to ${esc(String(setDefault(n)))}">Default</button>
+            <span class="sub sethelp">${esc(SET_HELP[n] || '')}</span></div>`).join('')}</section>`).join('')}
+        <section class="panel" id="remindersBox"></section>`;
+    $('settingsView').querySelectorAll('[data-set]').forEach(el => el.onchange = () => {
+        const n = el.dataset.set, def = PADLIST.settings[n];
+        let v;
+        if (el.type === 'checkbox') v = el.checked;
+        else if (typeof def.default === 'number') {
+            v = Math.round(+el.value);
+            if (!Number.isFinite(v) || v < def.allowed[0] || v > def.allowed[1]) { el.value = setValue(n); return; }
+        } else v = el.value;
+        changeSetting(n, v);
+    });
+    $('settingsView').querySelectorAll('[data-soundbit]').forEach(el => el.onchange = () => {
+        const v = [...setValue('sounds')];
+        v[+el.dataset.soundbit] = el.checked ? '1' : '0';
+        changeSetting('sounds', v.join(''));
+    });
+    $('settingsView').querySelectorAll('[data-reset]').forEach(b => b.onclick = () => changeSetting(b.dataset.reset, setDefault(b.dataset.reset)));
+    setBar();
+    remindersPanel();
+}
+function changeSetting(n, v) {
+    if (v === setDefault(n)) delete KM.settings[n]; else KM.settings[n] = v;
+    if (!SETQ.waiting.includes(n)) SETQ.waiting.push(n);
+    renderSettings();
+    sendSettings();
+}
+async function sendSettings() {
+    if (SETQ.busy) return;
+    SETQ.busy = true;
+    while (SETQ.waiting.length) {
+        const n = SETQ.waiting.shift();
+        if (!Link.port) { SETQ.state = 'offline'; SETQ.note = 'Not connected: the change is kept in this page.'; SETQ.waiting = []; break; }
+        SETQ.state = 'sending'; setBar();
+        const answer = Link.waitFor(m => (m.t === 'setok' && m.name === n) || m.t === 'error', 5000);
+        Link.send({c: 'setting', name: n, value: setValue(n)});
+        const m = await answer;
+        if (m && m.t === 'setok') { SETQ.state = m.saved ? 'saved' : 'unsaved'; SETQ.note = ''; }
+        else { SETQ.state = 'error'; SETQ.note = m ? m.msg : 'The pad didn\'t answer.'; }
+    }
+    SETQ.busy = false;
+    setBar();
+}
+function setBar() {
+    const box = $('setBar');
+    if (!box) return;
+    const words = {idle: 'Live: changes go to the pad as you make them.', sending: 'Sending to the pad…', saved: 'Saved on the pad.',
+        unsaved: 'On the pad until it restarts: its drive is showing on a computer, so it couldn\'t save.',
+        error: 'The pad said no: ' + SETQ.note, offline: SETQ.note};
+    box.innerHTML = `<span class="dot ${['saved', 'sending'].includes(SETQ.state) ? 'on' : ''}" style="${SETQ.state === 'error' ? 'background:var(--bad)' : ['unsaved', 'offline'].includes(SETQ.state) ? 'background:var(--warn)' : ''}"></span>
+        <span>${esc(words[SETQ.state] || '')}</span>`;
+}
+// ─── Reminders: reminders.json on the pad (extras.py): a time, a note, the days. Saved as you change them; the pad
+// reads it again ({"c": "extras"}). They need the pad's clock, which a page sets when it connects. ───
+const REM = {list: null, state: '', timer: null, MAX: 12};
+const REM_DAYS = [['weekdays', 'Weekdays'], ['every day', 'Every day']];
+async function loadReminders() {
+    REM.list = [];
+    try {
+        const d = JSON.parse(await Link.readText('reminders.json'));
+        if (d && Array.isArray(d.list)) REM.list = d.list.filter(r => r && typeof r.at === 'string');
+    } catch (e) { /* none yet */ }
+}
+function remindersPanel() {
+    const box = $('remindersBox');
+    if (!box) return;
+    if (!Link.port) { box.innerHTML = '<h3>Reminders</h3><span class="sub">Connect the pad to see and set its reminders.</span>'; return; }
+    if (REM.list === null) { box.innerHTML = '<h3>Reminders</h3><span class="sub">Reading…</span>'; loadReminders().then(remindersPanel); return; }
+    box.innerHTML = `<h3>Reminders</h3>
+        <span class="sub">At these times the pad beeps, flashes its lights and shows the note until you press something. It
+          needs the clock, which this page (or the phone app) gives it when it connects.</span>
+        ${REM.list.map((r, i) => `<div class="row wrap remrow" style="margin-top:8px">
+          <input class="field" type="time" data-rem="at" data-i="${i}" value="${esc(r.at)}" style="width:130px" aria-label="Time">
+          <input class="field" data-rem="text" data-i="${i}" maxlength="60" value="${esc(r.text || '')}" placeholder="The note, e.g. Submit orders" style="flex:1;min-width:180px" aria-label="Note">
+          <select class="field" data-rem="days" data-i="${i}" style="width:auto" aria-label="Days">${REM_DAYS.map(([v, t]) => `<option value="${v}"${r.days === v ? ' selected' : ''}>${t}</option>`).join('')}</select>
+          <button class="btn small" type="button" data-remdel="${i}">Remove</button></div>`).join('')}
+        <div class="row" style="margin-top:8px"><button class="btn small" type="button" id="remAdd" ${REM.list.length >= REM.MAX ? 'disabled' : ''}>+ Add a reminder</button>
+          <span class="sub" id="remState">${esc(REM.state)}</span></div>`;
+    box.querySelectorAll('[data-rem]').forEach(el => {
+        el.oninput = el.onchange = () => {
+            const r = REM.list[+el.dataset.i];
+            r[el.dataset.rem] = el.dataset.rem === 'text' ? el.value : el.value;
+            clearTimeout(REM.timer);
+            REM.timer = setTimeout(saveReminders, el.dataset.rem === 'text' ? 700 : 100);
+        };
+    });
+    box.querySelectorAll('[data-remdel]').forEach(b => b.onclick = () => { REM.list.splice(+b.dataset.remdel, 1); saveReminders(); remindersPanel(); });
+    $('remAdd').onclick = () => { REM.list.push({at: '09:00', text: 'Reminder', days: 'weekdays'}); saveReminders(); remindersPanel(); };
+}
+async function saveReminders() {
+    const say = t => { REM.state = t; if ($('remState')) $('remState').textContent = t; };
+    if (!Link.port) return say('Not connected: kept in this page.');
+    say('Saving…');
+    try {
+        await Link.writeText('reminders.json', JSON.stringify({ember: 'reminders', list: REM.list.filter(r => /^\d\d:\d\d$/.test(r.at))}));
+        const ok = Link.waitFor(m => m.t === 'extrasok', 4000);
+        Link.send({c: 'extras'});
+        say((await ok) ? 'Saved on the pad.' : 'Saved: the pad reads it when it restarts.');
+    } catch (e) { say('Not saved: ' + e.message); }
+}
+Link.on(m => { if (m.t === 'closed') REM.list = null; });
+</script>

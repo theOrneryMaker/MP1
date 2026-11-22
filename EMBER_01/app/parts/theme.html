@@ -1,0 +1,64 @@
+<script>
+// ─── Themes: four color sets, each light and dark; Auto follows the computer. Chosen with the Theme button
+// (top bar) and remembered in this browser. The tokens are CSS variables on <html> (style.html uses them);
+// the always-on-top player window gets them too. The pad-screen drawings stay white on black, like the pad.
+const THEMES = {
+    ember: {name: 'Ember',
+        light: {bg: '#f8f4ef', panel: '#fffdfa', line: '#eadfd3', fg: '#2a211b', muted: '#7a6b5f', sel: '#d9581a', 'sel-ink': '#ffffff', chip: '#f4eadf', good: '#2f7d4f', warn: '#a15c07', bad: '#b03a2e', bezel: '#17120f', accent2: '#e8a33d'},
+        dark: {bg: '#15100d', panel: '#1f1813', line: '#33281f', fg: '#f2e8df', muted: '#a8988a', sel: '#ff7a2f', 'sel-ink': '#1a0e06', chip: '#2c221a', good: '#6cc58f', warn: '#f0a94a', bad: '#ef7d6d', bezel: '#070504', accent2: '#ffb347'}},
+    og: {name: 'OG',                        // the original MP1 page (FIRMWARE_04 theme.css): orange and purple keycaps, slate housing
+        light: {bg: '#f4f4f6', panel: '#ffffff', line: '#e2e2e8', fg: '#1c1c22', muted: '#5d5f6d', sel: '#d9661d', 'sel-ink': '#ffffff', chip: '#efedf5', good: '#2f7d4f', warn: '#a15c07', bad: '#c03a3a', bezel: '#17181d', accent2: '#6b4fb8'},
+        dark: {bg: '#22262e', panel: '#2b3039', line: '#3e4552', fg: '#eef1f6', muted: '#b3bac6', sel: '#e8772e', 'sel-ink': '#16120e', chip: '#343947', good: '#6cc58f', warn: '#e0a450', bad: '#ef7d7d', bezel: '#0d0f13', accent2: '#8b6fd6'}},
+    ocean: {name: 'Ocean',
+        light: {bg: '#f1f6f9', panel: '#ffffff', line: '#d6e3ec', fg: '#132330', muted: '#5b7182', sel: '#0b7a8c', 'sel-ink': '#ffffff', chip: '#e2eef5', good: '#2f7d4f', warn: '#a15c07', bad: '#b03a3a', bezel: '#0b1218', accent2: '#3b82c4'},
+        dark: {bg: '#0b141b', panel: '#111e28', line: '#1e3241', fg: '#e3eef5', muted: '#89a1b2', sel: '#2fc6d8', 'sel-ink': '#04161b', chip: '#172a39', good: '#6cc58f', warn: '#e0a450', bad: '#e07a7a', bezel: '#03070a', accent2: '#6aa8ff'}},
+    forest: {name: 'Forest',
+        light: {bg: '#f3f6f0', panel: '#ffffff', line: '#dbe4d4', fg: '#1b2617', muted: '#63725a', sel: '#2e7d3a', 'sel-ink': '#ffffff', chip: '#e5eedf', good: '#2f7d4f', warn: '#9a6a07', bad: '#b03a3a', bezel: '#0f140d', accent2: '#8bab2d'},
+        dark: {bg: '#0e130d', panel: '#151c13', line: '#253122', fg: '#e5eee0', muted: '#94a58b', sel: '#6fd170', 'sel-ink': '#07140a', chip: '#1c2919', good: '#6cc58f', warn: '#e0b450', bad: '#e07a7a', bezel: '#050704', accent2: '#c6e05a'}},
+    graphite: {name: 'Graphite',
+        light: {bg: '#f5f6f8', panel: '#ffffff', line: '#e0e3e8', fg: '#1c2027', muted: '#69727f', sel: '#3a6ad6', 'sel-ink': '#ffffff', chip: '#eceff3', good: '#2f7d4f', warn: '#a15c07', bad: '#a33a3a', bezel: '#15171b', accent2: '#7c8db0'},
+        dark: {bg: '#14171c', panel: '#1c2026', line: '#2d323b', fg: '#e6e8ec', muted: '#98a1ad', sel: '#6f9bff', 'sel-ink': '#0a1020', chip: '#272b33', good: '#6cc58f', warn: '#e0a450', bad: '#e07a7a', bezel: '#050608', accent2: '#a9b6d1'}},
+};
+const LOOK = {theme: 'ember', mode: 'dark'};     // (dark first: the user's preference, 2026-11-20)
+try { Object.assign(LOOK, JSON.parse(localStorage.getItem('emberLook') || '{}')); } catch (e) { /* private window: the defaults */ }
+if (!THEMES[LOOK.theme]) LOOK.theme = 'ember';
+const darkQuery = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+const isDark = () => LOOK.mode === 'dark' || (LOOK.mode === 'auto' && darkQuery && darkQuery.matches);
+
+function applyTheme(doc) {
+    const docs = doc ? [doc] : [document].concat(PLAYER && PLAYER.pip ? [PLAYER.pip.document] : []);
+    const t = THEMES[LOOK.theme][isDark() ? 'dark' : 'light'];
+    for (const d of docs) {
+        const root = d.documentElement;
+        for (const [k, v] of Object.entries(t)) root.style.setProperty('--' + k, v);
+        root.style.colorScheme = isDark() ? 'dark' : 'light';
+        root.dataset.theme = LOOK.theme;
+    }
+    if (!doc) {
+        try { localStorage.setItem('emberLook', JSON.stringify(LOOK)); } catch (e) { /* not kept */ }
+        if ($('editor') && !$('editor').hidden && KM.index) renderEditor();          // (the selection outline is drawn in the accent)
+    }
+}
+if (darkQuery) darkQuery.addEventListener('change', () => { if (LOOK.mode === 'auto') applyTheme(); });
+
+// the Theme button: a small panel with the four themes (each a swatch of its colors) and Auto / Light / Dark
+function themeMenu() {
+    const box = $('themeMenu');
+    if (!box.hidden) { box.hidden = true; return; }
+    const mode = isDark() ? 'dark' : 'light';
+    box.innerHTML = `<div class="lbl">Theme</div>
+        <div class="themes">${Object.entries(THEMES).map(([id, t]) => { const c = t[mode]; return `<button type="button" class="themeopt" data-theme-id="${id}" aria-pressed="${id === LOOK.theme}">
+            <span class="tswatch" style="background:${c.bg};border-color:${c.line}"><i style="background:${c.panel}"></i><i style="background:${c.sel}"></i><i style="background:${c.accent2}"></i></span>${t.name}</button>`; }).join('')}</div>
+        <div class="lbl">Look</div>
+        <div class="seg" role="group" aria-label="Light or dark">${[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([m, w]) =>
+            `<button class="btn small" type="button" data-mode-id="${m}" aria-pressed="${m === LOOK.mode}">${w}</button>`).join('')}</div>
+        <span class="sub">Dark to start with; Auto follows the computer. Kept in this browser.</span>`;
+    box.hidden = false;
+    box.querySelectorAll('[data-theme-id]').forEach(b => b.onclick = () => { LOOK.theme = b.dataset.themeId; applyTheme(); box.hidden = true; themeMenu(); });
+    box.querySelectorAll('[data-mode-id]').forEach(b => b.onclick = () => { LOOK.mode = b.dataset.modeId; applyTheme(); box.hidden = true; themeMenu(); });
+}
+$('themeBtn').addEventListener('click', e => { e.stopPropagation(); themeMenu(); });
+document.addEventListener('click', e => { const m = $('themeMenu'); if (!m.hidden && !e.target.closest('#themeMenu')) m.hidden = true; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $('themeMenu').hidden = true; });
+applyTheme();
+</script>
