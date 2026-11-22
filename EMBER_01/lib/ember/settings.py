@@ -18,9 +18,11 @@ SETTINGS = {
     "hold_turn_left": ("secret", None),
     "encoder_reverse": (False, (False, True)),
     "repeat_speed": ("normal", ("slow", "normal", "fast")),
+    "type_speed": ("normal", ("normal", "careful", "slow")),     # text and macros (a key can have its own)
     "key_lines": ("grid", ("grid", "shelves", "boxes", "dotted")),
     "screen_dim_minutes": (5, (0, 120)),
     "screen_off_minutes": (20, (0, 240)),
+    "idle_screen": ("dim", ("dim", "clock")),        # at "Dim after": dim, or the bouncing clock (extras.Saver)
     "lock_boxes": (True, (False, True)),
     "secret_lock_seconds": (15, (0, 600)),
     "light_scene": ("reactive", None),               # lights.SCENES (piece 5)

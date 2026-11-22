@@ -8,7 +8,43 @@ pad's console: click Connect… again and pick its other port. After the first t
 <p>Only one tab or program can use the pad at a time. Close the others if the page can't connect.</p>
 <p><b>Theme</b> (top right) picks the page's colors: Ember, OG (the original orange and purple), Ocean, Forest or Graphite, and Dark / Light / Auto (Auto follows the computer). It's remembered in this browser.</p></section>
 
-<section class="panel csvguide" id="helpCsv"><h3>Macros from a spreadsheet (.csv): the guide</h3>
+<section class="panel"><h3>The encoder</h3>
+<ul>
+<li><b>Turn:</b> what the layer's encoder does (volume, scroll, …). Set it in Keys → Layer settings.</li>
+<li><b>Click:</b> Layer keys (or the layer picker, or Layer cards). <b>Double click:</b> the Spotify screen. <b>Triple click:</b> the home layer. Change them in Settings → Encoder.</li>
+<li><b>Hold and press a key:</b> the HOLD+KEY keys. Their screen (black on white) shows as soon as you hold; take your time.</li>
+<li><b>Hold and turn:</b> the Hold + turn functions in Settings → Encoder.</li>
+<li><b>Hold 1.5 s and let go</b> (no key, no turn): the TOOLS menu: Timer, Counter, Busy light, Settings, Mouse jiggle, Lock keys, Drive, About.</li>
+<li><b>Layer cards:</b> one big card a layer, its picture with the name below (or just the name, big): easy to read at arm's
+length. Turn to flip through them, click to pick. Give a layer its card picture in Keys → Layer settings → Layer card.</li>
+<li><b>In a menu, the layer picker or Layer cards:</b> turn to move, click to choose, hold to close. Settings are saved when the menu closes.
+A key press there only closes it: nothing is typed.</li>
+<li><b>Locked:</b> hold the encoder 3 s to unlock.</li>
+</ul></section>
+
+<section class="panel"><h3>Keys</h3>
+<p>The middle shows the pad's screen, drawn exactly as the pad draws it. Click a key to edit it on the right:</p>
+<ul>
+<li><b>Label:</b> the words on the key. The page shows how they fit (one line next to a picture, two without).</li>
+<li><b>Picture:</b> an icon from four sets (search them; they load from the internet only while you choose), or draw one.
+<b>With label</b> keeps it small above the words; <b>Alone, big</b> fills the key. <b>Smaller / Bigger</b> adjust an icon.</li>
+<li><b>Action:</b> Keys (up to 4 together; Capture… reads them from your keyboard), Text, Macro, Media, Open, Go to a layer,
+a pad function, or the mouse. <b>Repeat while held</b> and <b>Hold to confirm</b> are below it.</li>
+</ul>
+<p><b>Every change goes to the pad at once</b> and is saved there. Ctrl+Z / Ctrl+Y undo and redo. If the pad's drive is showing
+on the computer, the pad can't save its files: changes then last until it restarts.</p></section>
+
+<section class="panel"><h3>Macros</h3>
+<p>Choose <b>Macro</b> as the action. <b>Record…</b> adds what you type: letters run together into one Text step, shortcuts and
+keys like Enter become Keys steps, and pressing the same key again counts it (×2, ×3…). Tick <b>keep pauses as waits</b> to keep
+your timing. Click <b>Stop recording</b> when done.</p>
+<p>Edit any step afterwards, change its count, move it, remove it, or <b>Add a step</b> (Keys, Text, Wait, Media, Mouse, Open).
+A few keys never reach the page (Win alone sometimes, Alt+Tab, Ctrl+W): add those as steps.</p>
+<p><b>Typing speed:</b> if a website drops characters or needs a moment between fields, set <b>Typing</b> to Careful or Slow
+(Settings → Keys &amp; screen), or give just that key its own <b>Typing speed</b> (in the key's panel). Normal types as fast as
+the computer takes it.</p>
+<p><b>Stopping a macro:</b> while one runs, press any key, turn the encoder or press it. It stops at once (even in the middle of a wait or a long text), lets go of every key, and the pad shows STOPPED. That press does nothing else.</p>
+<details class="csvguide" id="helpCsv"><summary>Macros from a spreadsheet (.csv): the guide</summary>
 <p>For long, repetitive entry: 50–100 order lines, or the same form filled again and again. You build the list in Excel,
 save it as a .csv file, and the page turns it into one macro key. Press the key and the pad types the whole list.</p>
 
@@ -101,41 +137,8 @@ or an email; the other person selects a key and presses Ctrl+V. See “Sharing k
 <li><button class="btn small" type="button" data-example="form">Repeated form</button> a 5-field form per row: waits between fields, ↓ Enter to pick from a drop-down, Ctrl+S to save, Alt+N for a new form.</li>
 <li><button class="btn small" type="button" data-example="twoforms">Two forms per record</button> a 7-field form and a 5-field form further down, filled once per row (12 columns side by side).</li>
 <li><button class="btn small" type="button" data-example="sections">Order header and lines</button> the top form once, then 6 lines in the form below ({HEADER} sections), then one save.</li>
-</ul></section>
-
-<section class="panel"><h3>The encoder</h3>
-<ul>
-<li><b>Turn:</b> what the layer's encoder does (volume, scroll, …). Set it in Keys → Layer settings.</li>
-<li><b>Click:</b> Layer keys (or the layer picker, or Layer cards). <b>Double click:</b> the Spotify screen. <b>Triple click:</b> the home layer. Change them in Settings → Encoder.</li>
-<li><b>Hold and press a key:</b> the HOLD+KEY keys. Their screen (black on white) shows as soon as you hold; take your time.</li>
-<li><b>Hold and turn:</b> the Hold + turn functions in Settings → Encoder.</li>
-<li><b>Hold 1.5 s and let go</b> (no key, no turn): the TOOLS menu: Timer, Counter, Busy light, Settings, Mouse jiggle, Lock keys, Drive, About.</li>
-<li><b>Layer cards:</b> one big card a layer, its picture with the name below (or just the name, big): easy to read at arm's
-length. Turn to flip through them, click to pick. Give a layer its card picture in Keys → Layer settings → Layer card.</li>
-<li><b>In a menu, the layer picker or Layer cards:</b> turn to move, click to choose, hold to close. Settings are saved when the menu closes.
-A key press there only closes it: nothing is typed.</li>
-<li><b>Locked:</b> hold the encoder 3 s to unlock.</li>
-</ul></section>
-
-<section class="panel"><h3>Keys</h3>
-<p>The middle shows the pad's screen, drawn exactly as the pad draws it. Click a key to edit it on the right:</p>
-<ul>
-<li><b>Label:</b> the words on the key. The page shows how they fit (one line next to a picture, two without).</li>
-<li><b>Picture:</b> an icon from four sets (search them; they load from the internet only while you choose), or draw one.
-<b>With label</b> keeps it small above the words; <b>Alone, big</b> fills the key. <b>Smaller / Bigger</b> adjust an icon.</li>
-<li><b>Action:</b> Keys (up to 4 together; Capture… reads them from your keyboard), Text, Macro, Media, Open, Go to a layer,
-a pad function, or the mouse. <b>Repeat while held</b> and <b>Hold to confirm</b> are below it.</li>
 </ul>
-<p><b>Every change goes to the pad at once</b> and is saved there. Ctrl+Z / Ctrl+Y undo and redo. If the pad's drive is showing
-on the computer, the pad can't save its files: changes then last until it restarts.</p></section>
-
-<section class="panel"><h3>Macros</h3>
-<p>Choose <b>Macro</b> as the action. <b>Record…</b> adds what you type: letters run together into one Text step, shortcuts and
-keys like Enter become Keys steps, and pressing the same key again counts it (×2, ×3…). Tick <b>keep pauses as waits</b> to keep
-your timing. Click <b>Stop recording</b> when done.</p>
-<p>Edit any step afterwards, change its count, move it, remove it, or <b>Add a step</b> (Keys, Text, Wait, Media, Mouse, Open).
-A few keys never reach the page (Win alone sometimes, Alt+Tab, Ctrl+W): add those as steps.</p>
-<p><b>Stopping a macro:</b> while one runs, press any key, turn the encoder or press it. It stops at once (even in the middle of a wait or a long text), lets go of every key, and the pad shows STOPPED. That press does nothing else.</p></section>
+</details></section>
 
 <section class="panel"><h3>Sharing keys and layers</h3>
 <p><b>Copy key</b> (under a key's settings) puts it on the clipboard as text: paste it into Webex or an email. Whoever gets it selects a
@@ -145,6 +148,8 @@ layer…; Load layer… under the Layers list adds one). Undo takes a loaded key
 Before you send one, check it holds nothing private.</p></section>
 
 <section class="panel"><h3>Layers</h3>
+<p><b>Starter layers…</b> (under the layers) adds a ready-made layer: Excel navigation, Windows, meetings (Webex and Teams),
+media, or the pad's own tools. Change anything after.</p>
 <p>The left column shows every layer; HOLD+KEY is last. Under the selected layer: <b>Layer settings</b> and <b>Delete…</b>.
 Drag a layer to move it, or use <b>+ Add layer</b>.</p>
 <p>Layer settings: the name, the home layer (the one the pad starts on), move, duplicate, delete, the encoder (label, turn right,
@@ -164,6 +169,12 @@ by another MP1. The page can only open or change them with this pad on the cable
 <li>In Keys they're at the bottom of the Layers list (“Secret page 1 · …”). Edit their keys like any layer; <b>+ Secret page</b>
 adds one, and their Layer settings have <b>Delete this secret page…</b>.</li>
 <li>Converting a pad from the old firmware converts its Secret 1 and Secret 2 into pages 1 and 2; the old file is kept in the old_keymap folder.</li>
+<li><b>PIN (optional):</b> under the secret pages in the Layers column, <b>Set a PIN…</b>: press a pattern of 4-8 keys, twice,
+on the drawing of the pad's keys or on the pad itself (it types nothing meanwhile). The pad then asks
+for it the first time you open the secret pages after plugging it in (keys 1-8 type it, turn left to take a digit back, click to
+open, hold to cancel; three wrong tries lock it for a minute), and this page asks for it before it shows them. The pages are
+encrypted with the PIN and the pad's chip together, so nobody can read them without both. If you forget the PIN, the pages
+can't be opened: delete secret.json (Files) and make them again.</li>
 </ul></section>
 
 <section class="panel"><h3>Settings, Files, Player</h3>

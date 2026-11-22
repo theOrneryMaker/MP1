@@ -21,6 +21,9 @@
 #                     delete): read them again and show that layer (or home). -> {"t": "reloaded", "errors": [...]}, then a hello
 #                 {"c": "time", "t": [y, mo, d, h, mi, s, weekday, yearday]}   set the clock
 #                 {"c": "extras"}                        reminders.json was written: read it again -> {"t": "extrasok"}
+#                 {"c": "pinpad", "on": true, "dots": n, "note": "..."}   the page asks for a PIN: the pad's keys send
+#                     {"t": "pinkey", "k": 0-7}, a left turn {"t": "pinback"}, a click {"t": "pinenter"}, holding
+#                     {"t": "pinclose"}; nothing is typed. "on": false ends it.
 #                 {"c": "opened", "id": n, "ok": true}   answer to "open"
 #                 {"c": "sync", "on": true / false, "pct": 0-100}   a save / read is going on (see below)
 #                 file commands (ls / read / write / delete / mkdir / df / restart / skey / cancel): linkfiles.py
@@ -112,7 +115,8 @@ class Link:
                         "errors": list(app.errors), "clock": getattr(app, "clock_set", False),
                         "scenes": list(lights.SCENES) if lights else None,
                         "hw": {"lights": app.lights.pixels is not None, "sound": app.hw.get("buzzer", "none") != "none"},
-                        "np": app.np_view is not None})
+                        "np": app.np_view is not None,
+                        "secret_pages": len(app.km.SECRET), "secret_note": app.km.SECRET_NOTE, "secret_pin": app.km.PIN})
         self.send(msg)
 
     def hello(self):
@@ -251,6 +255,18 @@ class Link:
             self.remap(msg)
         elif what == "layerset":
             self.layerset(msg)
+        elif what == "pinpad":              # the page asks for a PIN: the pad's keys give it the pattern (nothing typed)
+            from ember.extras import PinPadView
+            v = app.tool_view
+            if msg.get("on"):
+                if not isinstance(v, PinPadView):
+                    app.show()
+                    app.mode = app.TOOLVIEW
+                    v = app.tool_view = PinPadView(app, self)
+                v.show(int(msg.get("dots") or 0), str(msg.get("note") or "")[:21])
+            elif isinstance(v, PinPadView):
+                v.closed = lambda: None     # (the page closed it itself: no need to tell it)
+                app.show()
         elif what == "extras":              # the page wrote reminders.json: read it again
             app.extras.load_reminders()
             self.send({"t": "extrasok", "reminders": len(app.extras.reminders)})
@@ -416,7 +432,7 @@ class Link:
         app.km = app.layer = None
         gc.collect()
         from ember import keymap as loader
-        km = loader.load()
+        km = loader.load("/", app.secret_pin)      # (secret pages opened with their PIN since power-up: still open)
         errors = list(loader.ERRORS)
         loader = None
         from ember import forget

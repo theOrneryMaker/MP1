@@ -4,7 +4,7 @@
 #
 # Packed layer: flags (1 = encoder accel, 2 = has lights, 4 = jiggle, 8 = keep Num Lock on,
 # 16 = has a card picture, 32 + 64 = module view 0-3); 8 keys, each a flags byte (1 = a key is there, 2 = has an action,
-# 4 = repeat, 8 = confirm, 16 = has a picture), then if there: its label, its picture (w, h, then
+# 4 = repeat, 8 = confirm, 16 = has a picture, 32-128 = its own typing speed: 0 = the pad's, then SPEEDS), then if there: its label, its picture (w, h, then
 # the bits: (w + 7) // 8 bytes a row) and its action; the encoder label; cw and ccw, each a 0/1 byte
 # and the action; then (if it has lights) the scene, color 1 and color 2 (a 0/1 byte and r, g, b),
 # the brightness and the speed; then (if it has one) the card picture (w, h, bits). Texts are a length byte and UTF-8. Actions are packed like macro
@@ -13,6 +13,7 @@
 from ember.actions import read_step
 
 NUM_KEYS = 8
+SPEEDS = ("normal", "careful", "slow")      # typing speeds (actions.SPEED): the "type_speed" setting, or a key's own
 
 
 class Layer:
@@ -24,6 +25,7 @@ class Layer:
         self.keys = [None] * NUM_KEYS       # (kind, value) actions
         self.repeat = [False] * NUM_KEYS
         self.confirm = [False] * NUM_KEYS
+        self.speed = [None] * NUM_KEYS      # a key's own typing speed (None: the pad's setting)
         self.enc_label = ""
         self.cw = None
         self.ccw = None
@@ -62,6 +64,8 @@ def unpack(name, data):
         layer.present[k] = True
         layer.repeat[k] = bool(f & 4)
         layer.confirm[k] = bool(f & 8)
+        if f >> 5:
+            layer.speed[k] = SPEEDS[(f >> 5) - 1]
         layer.labels[k], i = _text(data, i)
         if f & 16:
             w, h = data[i], data[i + 1]
@@ -103,6 +107,8 @@ class Keymap:
         self.HOLD = hold                    # the HOLD+KEY keys' index (packed like a layer), or None
         self._index = None
         self._layer = None
+        self.PIN = False                    # the secret pages have a PIN and aren't open yet (keymap.load)
+        self.SECRET_NOTE = ""               # why the secret pages are (not) loaded (keymap.load)
 
     def layer(self, index):
         """The unpacked layer `index` (the last one asked for is kept)."""

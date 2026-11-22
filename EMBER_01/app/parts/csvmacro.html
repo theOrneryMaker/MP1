@@ -31,6 +31,11 @@ function csvToken(tok) {
     let mm;
     if ((mm = /^DATE\s+(.+)$/i.exec(t0))) return {stamp: normalStamp(mm[1].trim())};     // (+180 at the end: days from today)
     if ((mm = /^NEXT\s+([A-Za-z0-9 _-]{1,16})$/i.exec(t0))) return {number: mm[1].trim().toUpperCase()};
+    if ((mm = /^PAUSE(?:\s+(.+))?$/i.exec(t0))) {                  // waits for a click (the note shows on the pad)
+        const note = (mm[1] || 'Paused').trim().slice(0, 60);
+        if ([...note].some(ch => ch < ' ' || ch > '~')) throw new Error(`{${t0}}: the note can only use the letters, numbers and symbols on a US keyboard`);
+        return {pause: note};
+    }
     const t = t0, m = /^(.*?)(?:\s+(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?)?$/.exec(t), name = m[1].trim(), n = m[2], gap = m[3];
     if (CSV_WAIT.includes(name.toUpperCase())) {
         const s = +n;
@@ -109,16 +114,23 @@ function csvRows(text) {
 // problems, seconds}. Sections: a row whose first cell starts with {HEADER} is a new header (e.g. an order's top form
 // once, then its lines in a second form); the rows under it use it until the next {HEADER} row.
 const CSV_HEADER = /^\s*\{header\}/i;
+const CSV_FOOTER = /^\s*\{footer\}/i;         // a row of keys run once after everything (e.g. Save, Submit)
+const CSV_COMMENT = /^\s*#/;                   // a note in the file: skipped
 function csvMacro(text) {
     const {rows, sep} = csvRows(text);
-    const problems = [], sections = [];
+    const problems = [], sections = [], footers = [];
+    let firstRow = true;
     rows.forEach((r, i) => {
-        if (i === 0 || CSV_HEADER.test(r[0] || '')) sections.push({row: i + 1, head: [String(r[0] || '').replace(CSV_HEADER, '')].concat(r.slice(1)), data: []});
+        if (CSV_COMMENT.test(r[0] || '')) return;
+        if (CSV_FOOTER.test(r[0] || '')) { footers.push([i + 1, [String(r[0]).replace(CSV_FOOTER, '')].concat(r.slice(1))]); return; }
+        if (firstRow || CSV_HEADER.test(r[0] || '')) sections.push({row: i + 1, head: [String(r[0] || '').replace(CSV_HEADER, '')].concat(r.slice(1)), data: []});
         else sections[sections.length - 1].data.push([i + 1, r]);
+        firstRow = false;
     });
     if (!sections.length || !sections.some(s => s.data.length))
         return {steps: [], sections: [], rows: 0, cols: 0, after: [], problems: ['The first row says what follows each column; the rows under it are typed. There are no rows to type.'], sep};
-    const steps = [];
+    const steps = [], total = sections.reduce((n, s) => n + s.data.length, 0);
+    let done = 0;
     for (const sec of sections) {
         sec.cols = Math.max(sec.head.length, ...sec.data.map(([, r]) => r.length));
         const used = c => (sec.head[c] || '').trim() || sec.data.some(([, r]) => (r[c] || '').trim());
@@ -129,10 +141,13 @@ function csvMacro(text) {
             catch (e) { problems.push(`Row ${sec.row}, column ${c + 1}: ${e.message}`); sec.after.push([]); }
         }
         if (!sec.data.length) problems.push(`Row ${sec.row}: a header with no rows under it`);
+        let inSection = 0;
         for (const [rowNo, r] of sec.data) {
+            steps.push({mark: [++done, total]});    // (the pad's progress screen: "Row 37 of 80")
+            inSection++;
             for (let c = 0; c < sec.cols; c++) {
                 try {
-                    const cell = csvCell(r[c] || '');
+                    const cell = csvCell(String(r[c] || '').replace(/\{ROW\}/gi, String(inSection)));     // {ROW}: this row's number
                     for (const s of cell) {             // (the pad types with a US keyboard layout: plain characters only)
                         const bad = s.text != null && [...s.text].find(ch => ch < ' ' || ch > '~');
                         if (bad) throw new Error(`the pad can't type “${bad}” (only the letters, numbers and symbols on a US keyboard)`);
@@ -145,6 +160,12 @@ function csvMacro(text) {
         sec.rows = sec.data.length;
         delete sec.data;
     }
+    for (const [rowNo, cells] of footers) {          // {FOOTER} rows: once, after all the rows
+        cells.forEach((cell, c) => {
+            try { steps.push(...csvCell(cell || '')); }
+            catch (e) { problems.push(`Row ${rowNo}, column ${c + 1}: ${e.message}`); }
+        });
+    }
     const merged = [];                      // text next to text joins; the same key again counts up
     for (const s of steps) {
         const p = merged[merged.length - 1];
@@ -154,7 +175,7 @@ function csvMacro(text) {
         else merged.push(s);
     }
     let seconds = 0;
-    for (const s of merged) seconds += s.delay != null ? s.delay : s.text != null ? s.text.length * 0.012 : 0.02 * (s.times || 1);
+    for (const s of merged) seconds += s.delay != null ? s.delay : s.text != null ? s.text.length * 0.012 : s.mark ? 0 : 0.02 * (s.times || 1);
     const first = sections[0];
     return {steps: merged, sections, rows: sections.reduce((n, s) => n + s.rows, 0), cols: first.cols, after: first.after, head: first.head, problems, seconds, sep};
 }
@@ -167,6 +188,7 @@ const CSV_SAMPLE = CSV_EXAMPLES.order[1];
 document.addEventListener('click', e => { const b = e.target.closest('[data-example]'); if (b) downloadText(...CSV_EXAMPLES[b.dataset.example]); });
 function openCsvHelp() {                    // Help, at the CSV guide
     document.querySelector('[data-view=helpView]').click();
+    $('helpCsv').open = true;               // (it's folded away under Macros)
     setTimeout(() => $('helpCsv').scrollIntoView({block: 'start'}), 0);
 }
 const stepWord = s => { const d = describe(s); return (d[1].length ? d[1].join('+') : d[0] === 'Wait' ? 'wait ' + s.delay + ' s' : d[0]) + (s.times > 1 ? ' ×' + s.times : ''); };

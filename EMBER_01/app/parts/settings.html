@@ -6,8 +6,10 @@ const SET_HELP = {
     click_single: 'One click of the encoder: a layer list (the layer picker, layer keys or layer cards).', click_double: 'Two quick clicks.', click_triple: 'Three quick clicks.',
     hold_turn_right: 'Hold the encoder and turn it right.', hold_turn_left: 'Hold the encoder and turn it left.',
     encoder_reverse: 'Swap the turn directions.',
-    repeat_speed: 'How fast a held key repeats (keys with Repeat while held).', key_lines: 'The lines between the keys on the screen.',
-    screen_dim_minutes: 'Dims the screen after this long without use (0 = never).', screen_off_minutes: 'Turns the screen off (0 = never).',
+    repeat_speed: 'How fast a held key repeats (keys with Repeat while held).',
+    type_speed: 'How fast text and macros are typed. Careful and Slow pause after each character and between steps, for websites that drop characters. A key can have its own.', key_lines: 'The lines between the keys on the screen.',
+    screen_dim_minutes: 'Dims the screen after this long without use (0 = never).',
+    idle_screen: 'At the dim time: dim the screen, or show a bouncing clock (it drifts round the screen so nothing burns in). The first key or turn only wakes it.', screen_off_minutes: 'Turns the screen off (0 = never).',
     lock_boxes: 'The C and N boxes on the top row while Caps Lock / Num Lock are on.',
     light_scene: 'What the lights do (a layer can have its own).', light_color1: 'The scene\'s color.', light_color2: 'Its second color (scenes that use two).',
     light_level: 'Brightness, 1-10.', lights_asleep: 'Keep the lights on while the screen is off.',
@@ -15,7 +17,7 @@ const SET_HELP = {
     secret_lock_seconds: 'A secret layer locks again after this long without use (0 = never).', jiggle_at_start: 'Start with the mouse jiggle on.',
 };
 const SET_WORDS = {grid: 'Grid', shelves: 'Shelves', boxes: 'Boxes', dotted: 'Dotted', slow: 'Slow', normal: 'Normal', fast: 'Fast',
-    off: 'Off', keys: 'Key clicks', everything: 'Everything'};
+    off: 'Off', keys: 'Key clicks', everything: 'Everything', careful: 'Careful', dim: 'Dim', clock: 'Bouncing clock'};
 const SOUND_PARTS = [['Start-up', 'Boot'], ['Changing layers', 'Layers'], ['Key clicks', 'Keys'], ['Alarms (timer, reminders)', 'Alarms']];     // (settings.py SOUND_PARTS)
 const SETQ = {waiting: [], busy: false, state: 'idle', note: ''};
 const setDefault = n => PADLIST.settings[n].default;

@@ -70,24 +70,31 @@ function drawLayerOf(layer) {
 }
 
 // ─── an action in words (the key panel) ───
-const ACTION_KINDS = ['key', 'combo', 'text', 'media', 'open', 'sequence', 'layer', 'tool', 'scroll', 'mouse', 'click', 'delay', 'number', 'stamp'];
+const ACTION_KINDS = ['key', 'combo', 'text', 'media', 'open', 'sequence', 'layer', 'tool', 'scroll', 'mouse', 'click', 'delay', 'number', 'stamp', 'pause', 'mark'];
 // a date / time format filled in (as extras.stamp_text on the pad): for showing what a stamp key types
 const STAMP_TOKENS = ['YYYY', 'AMPM', 'YY', 'MM', 'DD', 'HH', 'hh', 'mm', 'ss', 'M', 'D', 'H', 'h'];
 // "+N" / "-N" at the end of a format = that many days from today (extras.split_days on the pad)
+// "+10w" = 10 workdays (Monday to Friday) from today
 function splitDays(fmt) {
-    const m = /^(?:(.*\S)\s+)?([+-])(\d{1,5})\s*$/.exec(fmt);       // (a space before it: "PO-123" stays as it is)
-    if (!m) return [fmt, 0];
-    return [m[1] || 'MM/DD/YYYY', (m[2] === '-' ? -1 : 1) * +m[3]];
+    const m = /^(?:(.*\S)\s+)?([+-])(\d{1,5})(w?)\s*$/.exec(fmt);       // (a space before it: "PO-123" stays as it is)
+    if (!m) return [fmt, 0, false];
+    return [m[1] || 'MM/DD/YYYY', (m[2] === '-' ? -1 : 1) * +m[3], !!m[4]];
+}
+function addDays(d, days, work) {
+    d = new Date(d);
+    if (!work) { d.setDate(d.getDate() + days); return d; }
+    for (let n = Math.abs(days); n; ) { d.setDate(d.getDate() + Math.sign(days)); if (d.getDay() % 6) n--; }
+    return d;
 }
 // lowercase as people write it: yyyy / yy / dd, and mm as the month unless the format has hours (h:mm); "+ 180" = "+180"
 function normalStamp(fmt) {
-    let f = fmt.replace(/\s([+-])\s+(\d{1,5})\s*$/, ' $1$2').replace(/yyyy/g, 'YYYY').replace(/(^|[^Y])yy(?!y)/g, '$1YY').replace(/dd/g, 'DD');
+    let f = fmt.replace(/\s*(\d)\s*(?:work\s*days?|business\s*days?|wd)\s*$/i, '$1w').replace(/\s([+-])\s+(\d{1,5})(w?)\s*$/, ' $1$2$3').replace(/yyyy/g, 'YYYY').replace(/(^|[^Y])yy(?!y)/g, '$1YY').replace(/dd/g, 'DD');
     if (!/[Hh]/.test(f)) f = f.replace(/mm/g, 'MM');
     return f;
 }
 function stampText(fmt, d = new Date()) {
-    const [f, days] = splitDays(fmt);
-    if (days) { d = new Date(d); d.setDate(d.getDate() + days); }
+    const [f, days, work] = splitDays(fmt);
+    if (days) d = addDays(d, days, work);
     fmt = f;
     const p = n => String(n).padStart(2, '0'), h12 = d.getHours() % 12 || 12;
     const v = {YYYY: d.getFullYear(), YY: p(d.getFullYear() % 100), MM: p(d.getMonth() + 1), M: d.getMonth() + 1, DD: p(d.getDate()), D: d.getDate(),
@@ -132,7 +139,9 @@ function describe(obj) {
         case 'click': return ['Mouse', [], v + ' click'];
         case 'delay': return ['Wait', [], v + ' s'];
         case 'number': return ['Number', [], 'Types the next ' + v + ' number (1, 2, 3…)'];
-        case 'stamp': { const n = splitDays(v)[1]; return ['Date / time', [], 'Types it like ' + stampText(v) + (n ? ` (${Math.abs(n)} days ${n > 0 ? 'from today' : 'ago'})` : '')]; }
+        case 'stamp': { const [, n, w] = splitDays(v); return ['Date / time', [], 'Types it like ' + stampText(v) + (n ? ` (${Math.abs(n)} ${w ? 'workdays' : 'days'} ${n > 0 ? 'from today' : 'ago'})` : '')]; }
+        case 'pause': return ['Pause', [], 'Waits for a click of the encoder: “' + v + '”'];
+        case 'mark': return ['Row', [], 'Row ' + v[0] + ' of ' + v[1] + ' (for the progress screen)'];
     }
     return [a.kind, [], ''];
 }

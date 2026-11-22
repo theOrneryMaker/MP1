@@ -13,6 +13,9 @@ NUM_LOCK_KEY = ("key", 0x53)    # Keycode.KEYPAD_NUMLOCK
 
 
 TEXT_CHUNK = 32         # characters typed between watchdog feeds
+# typing speeds (the "type_speed" setting, or a key's own): (seconds after each character, seconds between macro steps).
+# normal = as fast as the computer takes it; careful / slow for websites that drop characters or need a moment.
+SPEED = {"normal": (0, 0.01), "careful": (0.015, 0.06), "slow": (0.04, 0.2)}
 
 # PANIC!: only actions that can't undo themselves when pressed twice
 MEDIA_PAUSE = 0xB1      # dedicated Pause (Play/Pause would start playback if nothing was playing)
@@ -28,7 +31,7 @@ class Stopped(Exception):
     """A running macro (or a long text, a wait) was stopped: App.stop_wanted saw a key, a turn or the encoder."""
 
 
-TEXT_OPS = {8: "text", 9: "open", 13: "tool", 14: "layer", 15: "number", 16: "stamp"}
+TEXT_OPS = {8: "text", 9: "open", 13: "tool", 14: "layer", 15: "number", 16: "stamp", 18: "pause"}
 
 
 def _int16(data, i):
@@ -60,6 +63,8 @@ def read_step(data, i):
         return ("mouse", (_int16(data, i), _int16(data, i + 2))), i + 4
     if op == 7:
         return ("delay", _int32(data, i) / 1000), i + 4
+    if op == 17:                            # a CSV row mark: (row, rows)
+        return ("mark", (data[i] | data[i + 1] << 8, data[i + 2] | data[i + 3] << 8)), i + 4
     if op == 11:                            # a whole macro (only in packed layers)
         n = _int32(data, i)
         i += 4
@@ -101,19 +106,35 @@ class Actions:
         self.stop_wanted = None             # the app: True when a key / the encoder asks a running macro to stop
         self.stopped = None                 # the app: called after one was stopped (STOPPED on the screen)
         self.depth = 0                      # press() inside press() (a macro's steps): only the outer one stops
+        self.paused = None                  # the app: paused(note) waits (the encoder pressed, or a "pause" step); True = stop
+        self.progress = None                # the app: progress(step, steps, mark) as a macro runs
+        self.finished = None                # the app: called when the outer press is over
+        self.mark = None                    # the CSV row the macro is on: (row, rows)
+        self.cfg = None                     # the app's settings (type_speed)
+        self.speed = SPEED["normal"]        # the speed of the press running now (its key's own, or the setting)
 
     def check(self):
-        """Between macro steps, text chunks and inside waits: stop if asked to."""
-        if self.stop_wanted is not None and self.stop_wanted():
+        """Between macro steps, text chunks and inside waits: stop if asked to, or pause (the encoder pressed)."""
+        if self.stop_wanted is None:
+            return
+        r = self.stop_wanted()
+        if r == "pause":
+            r = self.paused(None) if self.paused is not None else False
+        if r:
             raise Stopped()
 
-    def press(self, action):
+    def press(self, action, speed=None):
         """Key down. key/combo/click stay held until release(). A macro, a text or a wait can be stopped
-        part way (any key, a turn, a press of the encoder): everything held is let go."""
+        part way (any key, a turn, a press of the encoder): everything held is let go. speed: the key's own
+        typing speed (None: the pad's setting)."""
         self.depth += 1
         try:
-            if self.depth == 1 and self.stop_begin is not None:
-                self.stop_begin()
+            if self.depth == 1:
+                self.mark = None
+                name = speed or (self.cfg["type_speed"] if self.cfg else "normal")
+                self.speed = SPEED.get(name, SPEED["normal"])
+                if self.stop_begin is not None:
+                    self.stop_begin()
             self._press(action)
         except Stopped:
             if self.depth > 1:
@@ -123,6 +144,8 @@ class Actions:
                 self.stopped()
         finally:
             self.depth -= 1
+            if not self.depth and self.finished is not None:
+                self.finished()
 
     def _press(self, action):
         kind, value = action
@@ -155,12 +178,22 @@ class Actions:
                 self.run_tool(kind, value)
         elif kind == "delay":
             self.wait(value)
+        elif kind == "mark":                # (a CSV row starts: for the progress screen)
+            self.mark = value
+        elif kind == "pause":               # wait for a click (any key or a turn stops)
+            if self.paused is not None and self.paused(value):
+                raise Stopped()
         elif kind == "sequence":
+            gap, steps, n = self.speed[1], value[0] | value[1] << 8, 0
             for step in macro_steps(value):
                 self.check()
                 self.tap(step)
                 self.feed()
-                time.sleep(0.1 if step[0] == "media" else 0.01)
+                n += 1
+                if self.progress is not None:
+                    self.progress(n, steps, self.mark)
+                if step[0] != "mark":
+                    time.sleep(max(0.1, gap) if step[0] == "media" else gap)
 
     def release(self, action):
         kind, value = action
@@ -175,15 +208,25 @@ class Actions:
 
     def write(self, text):
         """Type text in short pieces, feeding the watchdog in between: long text can
-        take longer to type than the watchdog waits."""
+        take longer to type than the watchdog waits. Careful / slow: a pause after each character."""
+        pause = self.speed[0]
+        if pause:
+            for i, c in enumerate(text):
+                if i:
+                    self.check()
+                self.layout.write(c)
+                time.sleep(pause)
+                if not i % TEXT_CHUNK:
+                    self.feed()
+            return
         for i in range(0, len(text), TEXT_CHUNK):
             if i:
                 self.check()
             self.layout.write(text[i:i + TEXT_CHUNK])
             self.feed()
 
-    def tap(self, action):
-        self.press(action)
+    def tap(self, action, speed=None):
+        self.press(action, speed)
         if action[0] in ("key", "combo", "click"):
             time.sleep(0.01)
             self.release(action)

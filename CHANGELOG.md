@@ -1,5 +1,19 @@
 # Changes
 
+## Ember 01.1 (2026-11-22)
+
+- Running macros: a progress screen ("Row 37 of 80" for CSV macros); click the encoder to pause, click again to go on
+  (any key or a turn still stops).
+- Typing speed: Normal / Careful / Slow, for the pad (Settings) or one key.
+- CSV: `{ROW}`, `{PAUSE note}`, `{FOOTER}` rows (once, at the end), `#` comment rows, workdays (`{DATE +10 workdays}`).
+- Secret pages: an optional PIN, set as a pattern on the page's drawing of the pad's keys or on the pad itself; asked
+  once after the pad is plugged in; the pages are encrypted with the chip and the PIN together. The pad now says why if
+  its secret pages didn't load, and the page offers to reload them.
+- Starter layers: Excel navigation, Windows, meetings, media, the pad's tools.
+- The bouncing clock: a "When idle" setting (Dim or Bouncing clock).
+- Help: the CSV guide is folded away under Macros.
+- Phone app 1.2.
+
 ## Ember 01 (2026-11-21)
 
 The first Ember release: a rework of the MP1 firmware and its tools from the ground up.

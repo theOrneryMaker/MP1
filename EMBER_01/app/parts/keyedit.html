@@ -31,6 +31,8 @@ const KINDS = [['none', 'Nothing'], ['keys', 'Keys'], ['text', 'Text'], ['sequen
     ['layer', 'Go to a layer'], ['tool', 'Pad function'], ['mouse', 'Mouse'], ['number', 'Number (counts up)'], ['stamp', 'Date / time']];
 const STAMP_PRESETS = ['MM/DD/YYYY', 'M/D/YYYY', 'MM/DD/YY', 'YYYY-MM-DD', 'h:mm AMPM', 'HH:mm', 'MM/DD/YYYY h:mm AMPM'];
 const REPEATABLE = ['media', 'scroll', 'mouse', 'text', 'sequence'];
+const TYPED_KINDS = ['text', 'sequence', 'number', 'stamp'];       // (keys whose typing speed can be their own)
+const SPEED_WORDS = {normal: 'Normal (as fast as it goes)', careful: 'Careful', slow: 'Slow'};
 
 // the action of a key -> the editor's kind
 function kindOf(key) {
@@ -82,6 +84,10 @@ function keyPanel() {
           <select class="field" id="fKind">${KINDS.map(([v, t]) => `<option value="${v}"${v === kind ? ' selected' : ''}>${t}</option>`).join('')}</select>
           <div id="fAction" style="display:grid;gap:8px"></div>
           <span class="sub" id="actionHint"></span></div>
+        <div class="row wrap" id="fSpeedRow"><label class="lbl" for="fSpeed">Typing speed</label>
+          <select class="field" id="fSpeed" style="width:auto">${[['', 'The pad’s setting (' + SPEED_WORDS[KM.settings.type_speed || 'normal'] + ')'], ['normal', SPEED_WORDS.normal], ['careful', SPEED_WORDS.careful], ['slow', SPEED_WORDS.slow]].map(([v, t]) =>
+            `<option value="${v}"${(key.speed || '') === v ? ' selected' : ''}>${t}</option>`).join('')}</select>
+          <span class="sub">Careful or Slow for a website that drops characters or needs a moment between fields.</span></div>
         <div class="flags">
           <label><input type="checkbox" id="fRepeat"${key.repeat ? ' checked' : ''}> Repeat while held</label>
           <label><input type="checkbox" id="fConfirm"${key.confirm ? ' checked' : ''}> Hold to confirm</label></div>
@@ -103,6 +109,7 @@ function keyPanel() {
         actionForm(v, kindOf(k) === v ? k : withoutAction(k));     // (the same kind again: keep its action)
         commit();
     };
+    $('fSpeed').onchange = () => commit();
     $('fRepeat').onchange = $('fConfirm').onchange = e => {
         if (e.target.checked) (e.target.id === 'fRepeat' ? $('fConfirm') : $('fRepeat')).checked = false;     // (one or the other)
         commit();
@@ -193,14 +200,15 @@ function actionForm(kind, key) {
               from 1 on the pad: TOOLS → Counter, pick it, Reset. In a CSV: {NEXT LINE}.</span>`;
         $('fNumber').oninput = () => { clearTimeout(labelTimer); labelTimer = setTimeout(() => commit('number'), 400); };
     } else if (kind === 'stamp') {
-        const [f, days] = splitDays(a && a.kind === 'stamp' ? a.value : STAMP_PRESETS[0]), custom = !STAMP_PRESETS.includes(f);
+        const [f, days, work] = splitDays(a && a.kind === 'stamp' ? a.value : STAMP_PRESETS[0]), custom = !STAMP_PRESETS.includes(f);
         box.innerHTML = `<select class="field" id="fStampPick">${STAMP_PRESETS.map(p => `<option value="${esc(p)}"${p === f ? ' selected' : ''}>${esc(stampText(p))}  (${esc(p)})</option>`).join('')}
               <option value=""${custom ? ' selected' : ''}>Your own…</option></select>
             <input class="field" id="fStamp" value="${esc(f)}" maxlength="34" autocomplete="off" spellcheck="false"${custom ? '' : ' hidden'}>
             <div class="row"><label class="lbl" for="fDays">Days from today</label>
               <input class="field" id="fDays" type="number" min="-9999" max="9999" value="${days}" style="width:100px">
+              <label class="sub"><input type="checkbox" id="fWork"${work ? ' checked' : ''}> workdays only (skip weekends)</label>
               <span class="sub">0 = today, 180 = 180 days ahead, -30 = 30 days ago</span></div>
-            <span class="sub" id="fStampShow">Types: ${esc(stampText(f + (days ? (days > 0 ? ' +' : ' ') + days : '')))}</span>
+            <span class="sub" id="fStampShow">Types: ${esc(stampText(f + (days ? (days > 0 ? ' +' : ' ') + days + (work ? 'w' : '') : '')))}</span>
             <span class="sub">YYYY / YY year, MM / M month, DD / D day, HH / H hour (24), hh / h hour (12), mm minutes, ss seconds,
               AMPM. The pad gets the time from this page when it connects. In a CSV: {DATE} or {DATE YYYY-MM-DD}.</span>`;
         $('fStampPick').onchange = () => {
@@ -210,15 +218,16 @@ function actionForm(kind, key) {
             $('fStampShow').textContent = 'Types: ' + stampText(stampValue());
             commit();
         };
-        $('fStamp').oninput = $('fDays').oninput = () => { $('fStampShow').textContent = 'Types: ' + stampText(stampValue()); clearTimeout(labelTimer); labelTimer = setTimeout(() => commit('stamp'), 400); };
+        $('fStamp').oninput = $('fDays').oninput = $('fWork').onchange = () => { $('fStampShow').textContent = 'Types: ' + stampText(stampValue()); clearTimeout(labelTimer); labelTimer = setTimeout(() => commit('stamp'), 400); };
     } else box.innerHTML = '';
+    $('fSpeedRow').hidden = !TYPED_KINDS.includes(kind);
     $('fRepeat').disabled = !['media', 'text', 'mouse', 'sequence'].includes(kind) || kind === 'mouse' && box.querySelector('#fMouse') && !['up', 'down'].includes($('fMouse').value);
 }
 
 // the Date / time form -> the stamp value: the format (lowercase made pad-ready), then +N / -N days
 function stampValue() {
     const f = normalStamp($('fStamp').value.trim()), n = Math.max(-9999, Math.min(9999, parseInt($('fDays').value, 10) || 0));
-    return n ? f + (n > 0 ? ' +' : ' ') + n : f;
+    return n ? f + (n > 0 ? ' +' : ' ') + n + ($('fWork').checked ? 'w' : '') : f;
 }
 // the key as the panel shows it now -> {key, problem}
 function fromPanel() {
@@ -254,6 +263,7 @@ function fromPanel() {
         if (!splitDays(f)[0].trim()) problem = 'Choose how the date looks.'; else key.stamp = f;
     }
     const a = actionOf(key);
+    if (a && TYPED_KINDS.includes(kind) && $('fSpeed').value) key.speed = $('fSpeed').value;
     if ($('fRepeat').checked && a && REPEATABLE.includes(a.kind)) key.repeat = true;
     if ($('fConfirm').checked && a) key.confirm = true;
     return {key, problem};

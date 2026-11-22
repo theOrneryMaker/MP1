@@ -11,7 +11,7 @@ from ember.settings import SETTINGS, SOUND_PARTS
 GROUPS = (
     ("Encoder", ("click_single", "click_double", "click_triple", "hold_turn_right", "hold_turn_left",
                  "encoder_reverse")),
-    ("Keys & screen", ("repeat_speed", "key_lines", "screen_dim_minutes", "screen_off_minutes", "lock_boxes")),
+    ("Keys & screen", ("repeat_speed", "type_speed", "key_lines", "screen_dim_minutes", "idle_screen", "screen_off_minutes", "lock_boxes")),
     ("Lights", ("light_scene", "light_color1", "light_color2", "light_level", "lights_asleep")),
     ("Sound", ("sounds", "sound_level")),
     ("Other", ("secret_lock_seconds", "jiggle_at_start")),
@@ -19,7 +19,7 @@ GROUPS = (
 LABELS = {
     "click_single": "Click", "click_double": "Double click", "click_triple": "Triple click",
     "hold_turn_right": "Hold + turn R", "hold_turn_left": "Hold + turn L", "encoder_reverse": "Reverse",
-    "repeat_speed": "Key repeat", "key_lines": "Key lines", "screen_dim_minutes": "Dim after",
+    "repeat_speed": "Key repeat", "type_speed": "Typing", "idle_screen": "When idle", "key_lines": "Key lines", "screen_dim_minutes": "Dim after",
     "screen_off_minutes": "Off after", "lock_boxes": "Caps / Num",
     "light_scene": "Scene", "light_color1": "Color 1", "light_color2": "Color 2", "light_level": "Brightness",
     "lights_asleep": "While asleep", "sounds": "Sounds", "sound_level": "Volume",

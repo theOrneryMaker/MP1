@@ -3,7 +3,7 @@
 // A step is any action ({combo}, {key}, {text}, {delay}, {media}, {scroll}, {click}, {open}) with an optional
 // "times" (1-999, keymap.py MAX_TIMES). The key panel (keyedit.html) shows this form for the Macro kind;
 // box.dataset.seq holds the steps as JSON and commit() sends the key, live.
-const STEP_KINDS = [['keys', 'Keys'], ['text', 'Text'], ['delay', 'Wait'], ['media', 'Media'], ['mouse', 'Mouse'], ['open', 'Open']];
+const STEP_KINDS = [['keys', 'Keys'], ['text', 'Text'], ['delay', 'Wait'], ['pause', 'Pause (wait for a click)'], ['media', 'Media'], ['mouse', 'Mouse'], ['open', 'Open']];
 const MAX_TIMES = 999;
 const REC = {on: false, keepPauses: false};
 let macroTimer = null;
@@ -14,7 +14,7 @@ function stepKind(s) {
     return {key: 'keys', combo: 'keys', delay: 'delay', scroll: 'mouse', click: 'mouse', mouse: 'mouse'}[a.kind] || a.kind;
 }
 function stepFresh(kind) {
-    return {keys: {key: 'ENTER'}, text: {text: 'text'}, delay: {delay: 0.5}, media: {media: 'PLAYPAUSE'}, mouse: {click: 'left'}, open: {open: 'https://'}}[kind];
+    return {keys: {key: 'ENTER'}, text: {text: 'text'}, delay: {delay: 0.5}, pause: {pause: 'Click to go on'}, media: {media: 'PLAYPAUSE'}, mouse: {click: 'left'}, open: {open: 'https://'}}[kind];
 }
 const macroSteps = () => JSON.parse($('fAction').dataset.seq || '[]');
 function setSteps(steps, join) {
@@ -35,17 +35,25 @@ function macroForm(box, steps) {
         <div class="row" style="margin-top:8px"><button class="btn small" type="button" id="showSteps">Show all ${steps.length} steps to edit them</button></div></div>`;
     box.innerHTML = long ? summary() + macroTools() : `<ol class="steps">${steps.map((s, n) => {
         const kind = stepKind(s), a = actionOf(s);
+        const btns = `<span class="stepbtns"><button class="btn small" type="button" data-sup="${n}" ${n ? '' : 'disabled'} title="Move up">↑</button>
+              <button class="btn small" type="button" data-sdown="${n}" ${n < steps.length - 1 ? '' : 'disabled'} title="Move down">↓</button>
+              <button class="btn small" type="button" data-sdel="${n}" title="Remove this step">Remove</button></span>`;
+        if (!STEP_KINDS.some(k => k[0] === kind)) {        // (a CSV's row marks, Number and Date steps: shown, kept)
+            const d = describe(s);
+            return `<li class="step other"><div class="row"><span class="sub">${esc(d[0] + (d[2] ? ': ' + d[2] : ''))}</span>${btns}</div></li>`;
+        }
         let body = '';
         if (kind === 'text') body = `<input class="field sText" data-n="${n}" value="${esc(a.value)}" placeholder="What it types">`;
         else if (kind === 'delay') body = `<div class="row"><input class="field sDelay" data-n="${n}" type="number" min="0.05" max="60" step="0.05" value="${a.value}" style="width:90px"><span class="sub">seconds</span></div>`;
         else if (kind === 'media') body = sel('sMedia', Object.entries(MEDIA_WORDS), a.value, n);
         else if (kind === 'open') body = `<input class="field sOpen" data-n="${n}" value="${esc(a.value)}" placeholder="https://… or a program">`;
+        else if (kind === 'pause') body = `<input class="field sPause" data-n="${n}" maxlength="60" value="${esc(a.value)}" placeholder="The note on the pad, e.g. Pick the plant">`;
         else if (kind === 'mouse') body = `<div class="row">${sel('sMouse', [['left', 'Left click'], ['right', 'Right click'], ['middle', 'Middle click'], ['up', 'Scroll up'], ['down', 'Scroll down']],
             a.kind === 'click' ? a.value : a.kind === 'scroll' ? (a.value > 0 ? 'up' : 'down') : 'left', n)}${a.kind === 'scroll' ? `<input class="field sAmount" data-n="${n}" type="number" min="1" max="50" value="${Math.abs(a.value)}" style="width:70px">` : ''}</div>`;
         else if (kind === 'keys' && a && !['key', 'combo'].includes(a.kind)) { const d = describe(s); body = `<span class="sub">${esc(d[0] + (d[2] ? ': ' + d[2] : ''))}</span>`; }
         else body = `<div class="sKeys" data-n="${n}"></div>`;
         return `<li class="step"><div class="row">${sel('sKind', STEP_KINDS, kind, n)}
-              ${kind === 'delay' ? '' : `<label class="sub times" title="Run this step this many times">× <input class="field sTimes" data-n="${n}" type="number" min="1" max="${MAX_TIMES}" value="${s.times || 1}"></label>`}
+              ${kind === 'delay' || kind === 'pause' ? '' : `<label class="sub times" title="Run this step this many times">× <input class="field sTimes" data-n="${n}" type="number" min="1" max="${MAX_TIMES}" value="${s.times || 1}"></label>`}
               <span class="stepbtns"><button class="btn small" type="button" data-sup="${n}" ${n ? '' : 'disabled'} title="Move up">↑</button>
               <button class="btn small" type="button" data-sdown="${n}" ${n < steps.length - 1 ? '' : 'disabled'} title="Move down">↓</button>
               <button class="btn small" type="button" data-sdel="${n}" title="Remove this step">Remove</button></span></div>${body}</li>`;
@@ -63,6 +71,7 @@ function macroForm(box, steps) {
     box.querySelectorAll('.sKind').forEach(el => el.onchange = () => { put(at(el), stepFresh(el.value)); macroForm(box, steps2()); });
     box.querySelectorAll('.sText').forEach(el => el.oninput = () => { if (el.value) put(at(el), {text: el.value}, 'mtext' + at(el)); });
     box.querySelectorAll('.sOpen').forEach(el => el.oninput = () => { if (el.value.trim()) put(at(el), {open: el.value.trim()}, 'mopen' + at(el)); });
+    box.querySelectorAll('.sPause').forEach(el => el.oninput = () => { if (el.value.trim()) put(at(el), {pause: el.value.trim()}, 'mpause' + at(el)); });
     box.querySelectorAll('.sDelay').forEach(el => el.onchange = () => { const v = Math.round(Math.max(0.05, Math.min(60, +el.value || 0.5)) * 100) / 100; el.value = v; put(at(el), {delay: v}); });
     box.querySelectorAll('.sMedia').forEach(el => el.onchange = () => put(at(el), {media: el.value}));
     box.querySelectorAll('.sMouse, .sAmount').forEach(el => el.onchange = () => {

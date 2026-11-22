@@ -5,19 +5,22 @@
 #                     "hold_keys": [key or null x 8]}
 #   layers/NAME.json {"ember": "layer", "name": "EXCEL", "keys": [key or null x 8],
 #                     "encoder": {"label", "cw", "ccw", "accel"}, "lights", "jiggle", "num_lock", "module_view"}
-#   a key            {"label": "Copy", "pic": {"w", "h", "bits"}, <one action>, "repeat", "confirm"}
+#   a key            {"label": "Copy", "pic": {"w", "h", "bits"}, <one action>, "repeat", "confirm", "speed"}
+#                    (speed: "normal" / "careful" / "slow": how fast its text and macro steps are typed; none = the pad's)
 #
 # An action is an object with exactly one of:
 #   key "ENTER"   combo ["CONTROL", "C"]   text "Hello"   media "PLAYPAUSE"   open "https://..." / "notepad.exe"
 #   scroll 1 / -1   mouse [dx, dy]   click "left" / "right" / "middle"   delay 0.5   sequence [action, ...]
 #   tool "lock"   layer "EXCEL"   number "LINE" (types that counter's next number)   stamp "MM/DD/YYYY" (the date / time)
+#   in a macro only: pause "Pick the plant" (waits for a click, the note on the screen)   mark [row, rows] (the CSV row
+#   it's on: the progress screen)
 # A step in a sequence may add "times": 2-999. Problems go in ERRORS (shown at start-up), never a crash:
 # a key with a problem shows "ERR" and does nothing.
 
 import json
 import binascii
 from adafruit_hid.keycode import Keycode
-from ember.layers import Keymap, NUM_KEYS
+from ember.layers import Keymap, NUM_KEYS, SPEEDS
 
 MEDIA_CODES = {
     "PREV": 0xB6, "NEXT": 0xB5, "PLAYPAUSE": 0xCD, "STOP": 0xB7, "EJECT": 0xB8,
@@ -27,11 +30,11 @@ MEDIA_CODES = {
 }
 MOUSE_BUTTONS = {"left": 1, "right": 2, "middle": 4}
 OP = {"key": 1, "combo": 2, "click": 3, "media": 4, "scroll": 5, "mouse": 6, "delay": 7,
-      "text": 8, "open": 9, "tool": 13, "layer": 14, "number": 15, "stamp": 16}
+      "text": 8, "open": 9, "tool": 13, "layer": 14, "number": 15, "stamp": 16, "mark": 17, "pause": 18}
 SEQUENCE_OP = 11    # a whole packed macro (4-byte length first): only in packed layers
 REPEAT_OP = 12      # in a macro: a count (2 bytes), then one step to run that many times
-TEXT_KINDS = ("text", "open", "tool", "layer", "number", "stamp")
-KEY_EXTRAS = ("label", "pic", "repeat", "confirm")
+TEXT_KINDS = ("text", "open", "tool", "layer", "number", "stamp", "pause")
+KEY_EXTRAS = ("label", "pic", "repeat", "confirm", "speed")
 REPEATABLE = ("media", "scroll", "mouse", "text", "sequence")
 MODULE_VIEWS = ("status", "half", "full", "off")
 MAX_TIMES = 999
@@ -98,7 +101,7 @@ def _pack(step, out, where):
         out.extend(bytes(value))
     elif kind in ("media", "scroll"):
         _int16(out, value)
-    elif kind == "mouse":
+    elif kind in ("mouse", "mark"):
         _int16(out, value[0])
         _int16(out, value[1])
     else:                                   # delay, in ms
@@ -177,6 +180,10 @@ def parse_action(data, where, extra=()):
     if kind == "click":
         button = MOUSE_BUTTONS.get(value)
         return ("click", button) if button else _bad(where, "click should be left, right or middle")
+    if kind == "mark":
+        if not (isinstance(value, list) and len(value) == 2 and all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 0xFFFF for v in value)):
+            return _bad(where, "mark should be [row, rows]")
+        return ("mark", (value[0], value[1]))
     if kind == "delay":
         if not _number(value) or value <= 0:
             return _bad(where, "delay should be seconds above 0")
@@ -277,6 +284,12 @@ def _pack_key(key, where, out):
         if action is None:
             label, pic = "ERR", None
     flags = 1 | (2 if action else 0) | (16 if pic else 0)
+    speed = key.get("speed")
+    if speed is not None:
+        if speed in SPEEDS:
+            flags |= (SPEEDS.index(speed) + 1) << 5
+        else:
+            _bad(where, "speed should be normal, careful or slow")
     if action and _flag(key, "confirm", where):
         flags |= 8
     elif action and _flag(key, "repeat", where):
@@ -393,15 +406,45 @@ def secret_key():
     return bytes(SECRET_SALT[i] ^ uid[i % len(uid)] for i in range(16))
 
 
-def _read_secrets(root):
+def pin_key(pin):
+    """The key for secret pages with a PIN ("pin": true in secret.json): the chip's key and the PIN together (one AES
+    block, "MP1 PIN " + the digits, encrypted with the chip's key), so neither alone opens them. The page does the same."""
+    import aesio
+    block = ("MP1 PIN " + pin + " " * 8)[:16].encode()
+    out = bytearray(16)
+    aesio.AES(secret_key(), aesio.MODE_ECB).encrypt_into(block, out)
+    return bytes(out)
+
+
+SECRET_NOTE = [""]                          # why the secret pages are (not) loaded, for the pad / page / console
+
+
+def _read_secrets(root, pin=None, again=True):
+    """The secret pages (a list), or "pin" when they have a PIN and it isn't given or is wrong. SECRET_NOTE says why."""
+    SECRET_NOTE[0] = ""
     try:
         with open(root + SECRET_FILE) as f:
             data = json.load(f)
-    except OSError:
+    except OSError as e:
+        SECRET_NOTE[0] = "no secret.json" if getattr(e, "errno", 0) == 2 else "secret.json: can't open it ({})".format(e)
         return []                           # no secret layers
     except ValueError:
+        SECRET_NOTE[0] = "secret.json isn't valid JSON"
         _bad(SECRET_FILE, "isn't valid JSON; secret layers not loaded")
         return []
+    except MemoryError:
+        import gc
+        data = None
+        gc.collect()
+        if again:                           # (a brief squeeze: once more with the memory tidied)
+            return _read_secrets(root, pin, False)
+        SECRET_NOTE[0] = "not enough memory to read secret.json"
+        _bad(SECRET_FILE, "not enough memory to read it; secret pages not loaded (unplug and plug the pad back in)")
+        return []
+    has_pin = isinstance(data, dict) and data.get("pin") is True
+    if has_pin and not pin:
+        SECRET_NOTE[0] = "locked with a PIN"
+        return "pin"
     try:
         import binascii
         import aesio
@@ -409,13 +452,26 @@ def _read_secrets(root):
         box = binascii.a2b_base64(data["data"])
         data = None
         plain = bytearray(len(box))
-        aesio.AES(secret_key(), aesio.MODE_CTR, iv).decrypt_into(box, plain)
+        aesio.AES(pin_key(pin) if has_pin else secret_key(), aesio.MODE_CTR, iv).decrypt_into(box, plain)
         box = None
         layers = json.loads(plain)
         plain = None
         if not isinstance(layers, list):
             raise ValueError
+    except MemoryError:
+        import gc
+        box = plain = data = None
+        gc.collect()
+        if again:
+            return _read_secrets(root, pin, False)
+        SECRET_NOTE[0] = "not enough memory to read secret.json"
+        _bad(SECRET_FILE, "not enough memory to read it; secret pages not loaded (unplug and plug the pad back in)")
+        return []
     except (KeyError, ValueError, TypeError):
+        if has_pin:
+            SECRET_NOTE[0] = "locked with a PIN"
+            return "pin"                    # (the wrong PIN: what it opens isn't JSON)
+        SECRET_NOTE[0] = "secret.json can't be read on this pad"
         _bad(SECRET_FILE, "can't be read on this pad (made for another one?); secret layers not loaded")
         return []
     return layers
@@ -426,8 +482,9 @@ def _read(path):
         return json.load(f)
 
 
-def load(root="/"):
-    """Read keymap.json and its layer files: a layers.Keymap (problems in ERRORS)."""
+def load(root="/", pin=None):
+    """Read keymap.json and its layer files: a layers.Keymap (problems in ERRORS). pin: the secret pages' PIN, if they
+    have one (without it, or with a wrong one, they aren't loaded: Keymap.PIN is True)."""
     del ERRORS[:]
     try:
         index = _read(root + "keymap.json")
@@ -463,7 +520,9 @@ def load(root="/"):
         hold = len(packed)
         packed.append(_pack_layer({"keys": index["hold_keys"]}, "HOLD+KEY"))
     secret, secret_names = [], []
-    for data in _read_secrets(root):
+    pages = _read_secrets(root, pin)
+    locked = pages == "pin"
+    for data in ([] if locked else pages):
         if data is None:
             continue
         if not isinstance(data, dict) or data.get("ember") != "layer":
@@ -481,4 +540,8 @@ def load(root="/"):
         blob.extend(p)
         offsets.append(len(blob))
     home = names.index(index["home"]) if index.get("home") in names else 0
-    return Keymap(tuple(names), bytes(blob), tuple(offsets), home, hold, tuple(files), tuple(secret), tuple(secret_names))
+    km = Keymap(tuple(names), bytes(blob), tuple(offsets), home, hold, tuple(files), tuple(secret), tuple(secret_names))
+    km.PIN = locked                         # (secret pages with a PIN, not opened yet)
+    km.SECRET_NOTE = SECRET_NOTE[0] or "{} page{}".format(len(secret), "" if len(secret) == 1 else "s")
+    print("secret pages:", km.SECRET_NOTE)  # (on the console: a log shows when and why they went)
+    return km

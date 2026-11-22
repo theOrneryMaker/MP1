@@ -31,7 +31,9 @@ NUM_LOCK_RETRY_MS = 1000    # this far apart (the computer may not report it, or
 
 NORMAL, HOLD, PICKER, LAYER_KEYS, MESSAGE, LOCKED, MENU, SYNC, NOWPLAY, TOOLVIEW = range(10)
 SOUND_BOOT, SOUND_LAYERS, SOUND_KEYS, SOUND_ALARMS = range(4)     # the "sounds" setting's switches ("1001")
-ALERT_MS = 600000           # a timer / reminder alert stays this long (or until a key, a turn or a click)
+ALERT_MS = 600000
+PROGRESS_AFTER = 800        # ms a macro runs before its progress screen shows (short ones never flash it)
+PROGRESS_EVERY = 300        # ms between progress screen redraws (each costs a screen refresh)           # a timer / reminder alert stays this long (or until a key, a turn or a click)
 MENU_IDLE = 15000          # ms without input: the TOOLS menu closes (and saves)
 DRIVE_SLOT = 8             # boot.py: b"MP1D" this many bytes from the end of the NVM = show the drive next start
 
@@ -56,7 +58,7 @@ class NoAddon:
 
 
 class App:
-    NORMAL, HOLD, SYNC = NORMAL, HOLD, SYNC     # (for link.py)
+    NORMAL, HOLD, SYNC, TOOLVIEW = NORMAL, HOLD, SYNC, TOOLVIEW     # (for link.py)
 
     def __init__(self, keymap, cfg, screen, actions, keys, encoder, button, display, errors=(), lights=None, sound=None, hw=None,
                  port=None):
@@ -77,9 +79,15 @@ class App:
         self.colors = (None, None)
         actions.run_tool = self.run_tool
         actions.wait = self.wait
+        actions.cfg = cfg
         actions.stop_begin = self.stop_begin
         actions.stop_wanted = self.stop_wanted
         actions.stopped = self.macro_stopped
+        actions.paused = self.macro_pause
+        actions.progress = self.macro_progress
+        actions.finished = self.macro_finished
+        self.prog_start = None              # a macro running: when it started; its progress screen shows after PROGRESS_AFTER
+        self.prog_at = None                 # when the progress screen was last drawn (None: not showing)
         self.stop_seen = 0                  # when the stop inputs were last looked at (a running macro)
         self.stop_button = False            # the encoder was down at the last look (HOLD+KEY starts with it down)
         self.swallow_button = False         # the press that stopped a macro: it does nothing else
@@ -108,6 +116,10 @@ class App:
         from ember.extras import Extras
         self.extras = Extras(self)          # the timer, counters, stamps, busy light, reminders (extras.py)
         self.tool_view = None               # the Timer / Counter screen while it's open
+        self.saver = None                   # the bouncing clock while the pad is idle (extras.Saver)
+        self.secret_pin = None              # the secret pages' PIN, once entered (until the pad is unplugged)
+        self.pin_fails = 0
+        self.pin_until = None               # three wrong PINs: no more tries until then
         self.jiggle_on = cfg["jiggle_at_start"]
         self.jiggle_at = clock.add(clock.now(), JIGGLE_EVERY[0])
         self.opts = None                    # (layer, jiggle, num_lock) the layer's own options were applied for
@@ -135,6 +147,9 @@ class App:
             from ember import forget
             forget("nowplay")
             gc.collect()
+        if self.tool_view is not None and hasattr(self.tool_view, "closed"):
+            v, self.tool_view = self.tool_view, None
+            v.closed()                      # (the page's PIN entry: the page hears it was cancelled)
         self.tool_view = None               # (the Timer / Counter screen closes; the timer keeps going)
         x = self.extras
         if x.alarm_at is not None:          # (an alert closing: the alarm stops)
@@ -443,14 +458,48 @@ class App:
         """The secret pages: open at `page` (1 = the first; the "secret" function), or close them if they're
         showing. The encoder turns the pages (secret_turn)."""
         s = self.km.SECRET
+        if not s and self.km.PIN:           # a PIN first (once after the pad is plugged in)
+            self.ask_pin(page)
+            return
         if not s:
-            self.message("SECRET", ["No secret pages yet:", "make one in the page", "(Layers, + Secret page)."])
+            note = self.km.SECRET_NOTE
+            if note in ("no secret.json", "0 pages", ""):
+                self.message("SECRET", ["No secret pages yet:", "make one in the page", "(Layers, + Secret page)."])
+            else:                           # (they exist but didn't load: say why)
+                print("secret pages didn't load:", note)
+                self.message("SECRET", ["Secret pages didn't", "load: " + note[:18], note[18:40], "The page: Reload them"], 4000)
             return
         if self.km.is_secret(self.index):
             self.show(self.prev_index)
             return
         self.prev_index = self.index
         self.show(s[min(page, len(s)) - 1])
+
+    def ask_pin(self, page):
+        now = clock.now()
+        if self.pin_until is not None and clock.diff(now, self.pin_until) < 0:
+            self.message("LOCKED", ["A wrong PIN 3 times:", "try again in a minute."], 3000)
+            return
+        self.pin_until = None
+        self.show()
+        from ember.extras import PinView
+        self.mode = TOOLVIEW
+        self.tool_view = PinView(self, page)
+
+    def unlock_secret(self, pin):
+        """Open the secret pages with this PIN: the keymap read again with it. True if it was right."""
+        from ember import keymap as loader, forget
+        km = loader.load("/", pin)
+        loader = None
+        forget("keymap")
+        if km.PIN:
+            km = None
+            gc.collect()
+            return False
+        self.km, self.secret_pin, self.pin_fails, self.hold_view = km, pin, 0, None
+        self.layer = km.layer(self.index)
+        gc.collect()
+        return True
 
     def secret_turn(self, step):
         """On a secret page the encoder turns the pages (and sends nothing)."""
@@ -541,7 +590,7 @@ class App:
             self.confirmed[k] = False
             if not action or layer.confirm[k]:
                 return                          # (a confirm key fires once held long enough)
-            self.actions.press(action)
+            self.actions.press(action, layer.speed[k])
             if action[0] in ("key", "combo", "click"):
                 self.held[k] = action
             elif layer.repeat[k]:
@@ -560,7 +609,7 @@ class App:
         action = layer.keys[k]
         self.layer = None
         if action:
-            self.actions.press(action)
+            self.actions.press(action, layer.speed[k])
             if action[0] in ("key", "combo", "click"):
                 time.sleep(0.01)
                 self.actions.release(action)
@@ -579,11 +628,11 @@ class App:
             if layer.confirm[k]:
                 if not self.confirmed[k] and since(t, now) >= CONFIRM:
                     self.confirmed[k] = True
-                    self.actions.tap(action)
+                    self.actions.tap(action, layer.speed[k])
                     self.screen.press(k, False)     # the flash ends: it went
                     self.dirty = True
             elif layer.repeat[k] and clock.diff(now, self.next_repeat[k]) >= 0:
-                self.actions.press(action)
+                self.actions.press(action, layer.speed[k])
                 self.next_repeat[k] = clock.add(now, REPEAT[self.cfg["repeat_speed"]][1])
 
     # ── the encoder ──
@@ -729,8 +778,11 @@ class App:
         """Any input: back from dim / off. True if the pad was off (that input only wakes it)."""
         self.last_input = now
         if self.sleep_state:
-            was_off = self.sleep_state == 2
+            was_off = self.sleep_state == 2 or self.saver is not None     # (the clock showing: that input only wakes it)
             self.sleep_state = 0
+            if self.saver is not None:
+                self.saver = None
+                self.show()
             try:
                 self.display.wake()
                 self.display.brightness = 1.0
@@ -745,10 +797,16 @@ class App:
         try:
             if off and quiet >= off and self.sleep_state < 2:
                 self.sleep_state = 2
+                self.saver = None
                 self.display.sleep()
             elif dim and quiet >= dim and self.sleep_state < 1:
                 self.sleep_state = 1
-                self.display.brightness = 0.05
+                if self.cfg["idle_screen"] == "clock" and self.mode == NORMAL:
+                    from ember.extras import Saver
+                    self.display.brightness = 0.3
+                    self.saver = Saver(self)
+                else:
+                    self.display.brightness = 0.05
         except Exception:
             self.sleep_state = max(self.sleep_state, 1)
 
@@ -817,6 +875,7 @@ class App:
     def stop_begin(self):
         self.stop_seen = 0
         self.stop_button = not self.button.value
+        self.prog_start, self.prog_at = clock.now(), None
 
     def stop_wanted(self):
         now = clock.now()
@@ -844,11 +903,74 @@ class App:
             self.enc_pos = pos                  # (the turn only stops it)
             return True
         down = not self.button.value
-        if down and not self.stop_button:
-            self.swallow_button = True
-            return True
+        if down and not self.stop_button:   # the encoder pressed: pause (macro_pause), not stop
+            self.stop_button = True
+            return "pause"
         self.stop_button = down
         return False
+
+    def _prog_text(self, step, steps, mark):
+        if mark:
+            return "Row {} of {}".format(mark[0], mark[1])
+        return "{}%".format(step * 100 // max(1, steps)) if steps else ""
+
+    def macro_progress(self, step, steps, mark):
+        """A step of a macro done: its progress screen (after it's run a moment), redrawn now and then."""
+        now = clock.now()
+        if self.prog_start is None or since(self.prog_start, now) < PROGRESS_AFTER:
+            return
+        if self.prog_at is not None and since(self.prog_at, now) < PROGRESS_EVERY:
+            return
+        self.prog_at = now
+        self.screen.show_list("RUNNING", [self._prog_text(step, steps, mark), "", "Click: pause", "Key or turn: stop"])
+        self.screen.refresh()
+
+    def macro_pause(self, note):
+        """A running macro paused (the encoder pressed, or a {PAUSE} step): the screen says so until a click (go on);
+        any key or a turn stops it (True). The press that paused it, and the click that goes on, do nothing else."""
+        self.actions.release_all()
+        lines = [note or "Paused.", self._prog_text(0, 0, self.actions.mark) if self.actions.mark else "",
+                 "Click: go on", "Key or turn: stop"]
+        self.screen.show_list("PAUSED", lines)
+        self.screen.refresh()
+        import keypad
+        e, ev = self.stop_event or keypad.Event(), self.keys.events
+        self.stop_event = e
+        letting_go = not self.button.value      # (the press that paused it: first it's let go)
+        clicking = False
+        while True:
+            self.service(clock.now())
+            while ev.get_into(e):
+                if e.key_number < 8 and e.pressed:
+                    return True
+            pos = self.encoder.position
+            if pos != self.enc_pos:
+                self.enc_pos = pos
+                return True
+            down = not self.button.value
+            if letting_go:
+                letting_go = down
+            elif down:
+                clicking = True
+            elif clicking:
+                break                           # pressed and let go: a click, go on
+            time.sleep(0.02)
+        self.stop_button = False
+        self.b_raw = self.b_down = False        # (that click: nothing more)
+        self.b_changed = clock.now()
+        self.prog_at = None
+        self.screen.show_list("RUNNING", [self._prog_text(0, 0, self.actions.mark) if self.actions.mark else "Going on…", "",
+                                          "Click: pause", "Key or turn: stop"])
+        self.screen.refresh()
+        return False
+
+    def macro_finished(self):
+        """The outer key press is over: the progress screen (if it showed) gives way to the layer."""
+        if self.prog_at is not None and self.mode == NORMAL:
+            self.prog_at = None
+            self.show()
+            self.screen.refresh()
+        self.prog_start = None
 
     def macro_stopped(self):
         if self.swallow_button:
@@ -923,6 +1045,8 @@ class App:
             if self.np_view is not None:
                 self.np_view.tick(now)
             self.extras.tick(now)
+            if self.saver is not None:
+                self.saver.tick(now)
             self.service(now)
             self.layer_options(now)
             if self.jiggle_on and clock.diff(now, self.jiggle_at) >= 0:

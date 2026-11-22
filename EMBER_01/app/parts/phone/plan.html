@@ -76,7 +76,9 @@ async function planEmber(pkg, userFiles, userDirs, uid, now = new Date()) {
     const sjOld = mine[oldDir + '/secret.json'] ? oldDir + '/secret.json' : null, sj = sjOld || find('secret.json');
     const list = [];
     let rewrite = !!(r && r.secrets && r.secrets.length);
-    if (sj) {
+    if (sj && hasPin(text(mine[sj]))) {
+        notes.push('Secret pages: locked with a PIN, kept as they are.');
+    } else if (sj) {
         try {
             const opened = await secretOpen(text(mine[sj]), secretKeyFromUid(uid));
             for (const d of opened) {

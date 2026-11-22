@@ -15,14 +15,19 @@ and keeping the everyday shortcuts one press away.
   counts up, or today's date / time. Labels and pictures (icons drawn into pad pixels) show on the screen.
 - **Macros from a spreadsheet.** Write an order in a .csv (one column per field, the keys between fields in the
   header) and drop it on a key. `{TAB 2}`, `{ENTER}`, `{WAIT 0.5}`, `{F7 49 0.2}`, `{DATE MM/DD/YYYY +180}`,
-  `{NEXT LINE}` and more. Any key, a turn or a click stops a running macro.
+  `{NEXT LINE}`, `{ROW}`, `{PAUSE Check the total}`, `{DATE +10 workdays}`, a `{FOOTER}` row and `#` comment rows.
+  A running macro shows its progress ("Row 37 of 80"); click the encoder to pause it, any key or a turn stops it.
+  Typing speed (Normal / Careful / Slow) for websites that drop characters, for the pad or one key.
 - **Sharing.** Copy a key or a whole layer as text (paste it into a chat or an email), save it as a file, load it
   on another pad, from the page or the phone.
 - **The encoder:** a turn per layer (volume, scroll, ...), clicks and hold + turn for pad functions, HOLD+KEY: eight
   more keys while the encoder is held.
 - **Layer picker, layer keys and layer cards** (one big card a layer, readable at arm's length).
-- **Secret pages:** up to four pages of keys kept encrypted to the pad's chip, never listed or shown in the page.
-- **Timer / stopwatch** (with focus cycles), **counter**, **busy light**, **reminders**, all on the pad.
+- **Secret pages:** up to four pages of keys kept encrypted to the pad's chip, never listed or shown in the page; an
+  optional PIN (a pattern on the pad's keys) encrypts them with the chip and the PIN together.
+- **Starter layers:** Excel navigation, Windows, meetings (Webex / Teams), media and the pad's own tools, one click each.
+- **Timer / stopwatch** (with focus cycles), **counter**, **busy light**, **reminders**, and a **bouncing clock**
+  screensaver, all on the pad.
 - **Spotify screen:** what's playing, play / pause / skip / shuffle / repeat / like / volume (with Spotify Premium).
 - **Lights and sound:** scenes for the LEDs, beeps for start-up, layers, key clicks and alarms (each on or off).
 

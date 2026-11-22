@@ -1,0 +1,50 @@
+<script>
+// ─── Starter layers: ready-made layers added with one click (Layers column, Starter layers…). Standard Windows / Office
+// shortcuts only; the meetings one says to check them against the meeting app. Added like a loaded layer (share.html). ───
+const k8 = keys => keys.concat(Array(8 - keys.length).fill(null)).slice(0, 8);
+const STARTERS = [
+    {name: 'EXCEL NAV', what: 'Moving round a workbook: top, last cell, sheets, filter, edit a cell, today\'s date, AutoSum.',
+     layer: {ember: 'layer', name: 'EXCEL NAV', keys: k8([
+         {label: 'Top', combo: ['CONTROL', 'HOME']}, {label: 'Last cell', combo: ['CONTROL', 'END']},
+         {label: 'Prev sheet', combo: ['CONTROL', 'PAGE_UP']}, {label: 'Next sheet', combo: ['CONTROL', 'PAGE_DOWN']},
+         {label: 'Filter', combo: ['CONTROL', 'SHIFT', 'L']}, {label: 'Edit cell', key: 'F2'},
+         {label: 'Today', combo: ['CONTROL', 'SEMICOLON']}, {label: 'Sum', combo: ['ALT', 'EQUALS']}]),
+         encoder: {label: 'Scroll', cw: {scroll: -3}, ccw: {scroll: 3}, accel: true}}},
+    {name: 'WINDOWS', what: 'Desktop, lock, Explorer, screenshot, clipboard history, Task Manager, switch window, Settings.',
+     layer: {ember: 'layer', name: 'WINDOWS', keys: k8([
+         {label: 'Desktop', combo: ['GUI', 'D']}, {label: 'Lock', combo: ['GUI', 'L']},
+         {label: 'Explorer', combo: ['GUI', 'E']}, {label: 'Snip', combo: ['GUI', 'SHIFT', 'S']},
+         {label: 'Clipboard', combo: ['GUI', 'V']}, {label: 'Task Mgr', combo: ['CONTROL', 'SHIFT', 'ESCAPE']},
+         {label: 'Switch', combo: ['ALT', 'TAB']}, {label: 'Settings', combo: ['GUI', 'I']}]),
+         encoder: {label: 'Volume', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}}},
+    {name: 'MEETINGS', what: 'Webex and Teams: mute, video / camera, Teams raise hand, plus the computer\'s mute. Check them against your meeting app.',
+     layer: {ember: 'layer', name: 'MEETINGS', keys: k8([
+         {label: 'Webex mute', combo: ['CONTROL', 'M']}, {label: 'Webex video', combo: ['CONTROL', 'SHIFT', 'V']},
+         null, {label: 'Mute all', media: 'MUTE'},
+         {label: 'Teams mute', combo: ['CONTROL', 'SHIFT', 'M']}, {label: 'Teams cam', combo: ['CONTROL', 'SHIFT', 'O']},
+         {label: 'Raise hand', combo: ['CONTROL', 'SHIFT', 'K']}, null]),
+         encoder: {label: 'Volume', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}}},
+    {name: 'MEDIA', what: 'Previous, play / pause, next, mute, Spotify, and volume on the encoder.',
+     layer: {ember: 'layer', name: 'MEDIA', keys: k8([
+         {label: 'Prev', media: 'PREV'}, {label: 'Play', media: 'PLAYPAUSE'}, {label: 'Next', media: 'NEXT'}, {label: 'Mute', media: 'MUTE'},
+         {label: 'Spotify', tool: 'spotify'}, null, null, null]),
+         encoder: {label: 'Volume', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}}},
+    {name: 'TOOLS', what: 'The pad\'s own: timer, counter, busy light, today\'s date, a line number that counts up, layer cards.',
+     layer: {ember: 'layer', name: 'TOOLS', keys: k8([
+         {label: 'Timer', tool: 'timer'}, {label: 'Counter', tool: 'counter'}, {label: 'Busy', tool: 'busy'}, {label: 'Cards', tool: 'layer_cards'},
+         {label: 'Date', stamp: 'MM/DD/YYYY'}, {label: 'Line no.', number: 'LINE'}, {label: '+30 days', stamp: 'MM/DD/YYYY +30'}, null]),
+         encoder: {label: 'Volume', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}}},
+];
+let startersOpen = false;
+function startersBox() {
+    const box = $('startersBox');
+    if (!box) return;
+    box.innerHTML = startersOpen ? `<div class="msg"><b>Starter layers</b> <span class="sub">(added as a new layer; change anything after)</span>
+        ${STARTERS.map((s, i) => `<div class="row" style="margin-top:6px;align-items:flex-start"><button class="btn small" type="button" data-starter="${i}">Add</button>
+          <span><b>${esc(s.name)}</b><br><span class="sub">${esc(s.what)}</span></span></div>`).join('')}
+        <div class="row" style="margin-top:6px"><button class="btn small" type="button" id="startersClose">Close</button></div></div>` : '';
+    box.querySelectorAll('[data-starter]').forEach(b => b.onclick = () => { addLayerData(STARTERS[+b.dataset.starter].layer, 'a starter'); });
+    if ($('startersClose')) $('startersClose').onclick = () => { startersOpen = false; startersBox(); };
+}
+$('startersBtn').addEventListener('click', () => { startersOpen = !startersOpen; startersBox(); });
+</script>

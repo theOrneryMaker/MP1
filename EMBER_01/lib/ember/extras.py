@@ -51,15 +51,33 @@ def stamp_text(fmt, t):
 
 
 def split_days(fmt):
-    """A format ending in +N / -N (days from today): (the format, N). "MM/DD/YYYY +180" -> ("MM/DD/YYYY", 180)."""
+    """A format ending in +N / -N (days from today; +Nw = workdays, Monday to Friday): (the format, N, workdays).
+    "MM/DD/YYYY +180" -> ("MM/DD/YYYY", 180, False); "+10w" -> ("MM/DD/YYYY", 10, True)."""
     s = fmt.rstrip()
+    work = len(s) > 1 and s[-1] == "w" and s[-2].isdigit()
+    if work:
+        s = s[:-1]
     i = len(s)
     while i and s[i - 1].isdigit():
         i -= 1
     if i < len(s) and i and s[i - 1] in "+-" and len(s) - i <= 5 and (i == 1 or s[i - 2] == " "):
         days = int(s[i:]) * (-1 if s[i - 1] == "-" else 1)
-        return s[:i - 1].rstrip() or "MM/DD/YYYY", days
-    return fmt, 0
+        return s[:i - 1].rstrip() or "MM/DD/YYYY", days, work
+    return fmt, 0, False
+
+
+def add_days(t, days, work):
+    """A time.struct_time moved days ahead (or back); workdays skip Saturdays and Sundays."""
+    secs = time.mktime(t)
+    if not work:
+        return time.localtime(secs + days * 86400)
+    step = 86400 if days > 0 else -86400
+    n = abs(days)
+    while n:
+        secs += step
+        if time.localtime(secs)[6] < 5:
+            n -= 1
+    return time.localtime(secs)
 
 
 def mmss(ms):
@@ -150,10 +168,10 @@ class Extras:
         or None (the clock isn't set yet)."""
         if not self.app.clock_set:
             return None
-        fmt, days = split_days(fmt)
+        fmt, days, work = split_days(fmt)
         t = time.localtime()
         if days:
-            t = time.localtime(time.mktime(t) + days * 86400)
+            t = add_days(t, days, work)
         return stamp_text(fmt, t)
 
     # ── the timer ──
@@ -300,6 +318,123 @@ class Extras:
         if self.busy:
             return ("static", "RED")
         return None
+
+
+# ── the PIN for secret pages (keymap.pin_key): asked the first time they're opened after the pad is plugged in ──
+class PinView:
+    """Keys 1-8 type the digits, turning left takes one back, a click tries it, holding the encoder cancels."""
+
+    def __init__(self, app, page):
+        self.app, self.page = app, page
+        self.digits, self.note = "", "Keys 1-8, then click"
+        self.draw()
+
+    def draw(self):
+        self.app.screen.show_list("SECRET PAGES", ["Enter the PIN:", "* " * len(self.digits) + "_", self.note, "Hold: cancel"])
+        self.app.dirty = True
+
+    def tick(self, now):
+        pass
+
+    def key(self, k, pressed, now):
+        if pressed and len(self.digits) < 8:
+            self.digits += str(k + 1)
+            self.draw()
+
+    def turn(self, step, now):
+        if step < 0 and self.digits:
+            self.digits = self.digits[:-1]
+            self.draw()
+
+    def click(self, now):
+        app = self.app
+        if not self.digits:
+            return
+        if app.unlock_secret(self.digits):
+            app.toggle_secret(self.page)
+            return
+        app.pin_fails += 1
+        self.digits = ""
+        if app.pin_fails >= 3:
+            app.pin_fails = 0
+            app.pin_until = clock.add(now, 60000)
+            app.show()
+            app.message("LOCKED", ["A wrong PIN 3 times:", "try again in a minute."], 3000)
+            return
+        self.note = "Wrong PIN ({} more tries)".format(3 - app.pin_fails)
+        self.draw()
+
+
+# ── the page's PIN entry on the pad's own keys (link "pinpad"): the page asks for a PIN (to set one or to open the
+# secret pages there) and the pad's keys send the pattern to the page: nothing is typed. The page counts the presses and
+# tells the pad how many to show (dots) and what to say. ──
+class PinPadView:
+    def __init__(self, app, link):
+        self.app, self.link = app, link
+        self.dots, self.note = 0, "Press the keys"
+        self.draw()
+
+    def draw(self):
+        self.app.screen.show_list("PIN FOR THE PAGE", [self.note[:21], "* " * self.dots + "_", "Click: done", "Hold: cancel"])
+        self.app.dirty = True
+
+    def show(self, dots, note):
+        self.dots, self.note = dots, note or self.note
+        self.draw()
+
+    def tick(self, now):
+        pass
+
+    def key(self, k, pressed, now):
+        if pressed:
+            self.link.send({"t": "pinkey", "k": k})
+
+    def turn(self, step, now):
+        if step < 0:
+            self.link.send({"t": "pinback"})
+
+    def click(self, now):
+        self.link.send({"t": "pinenter"})
+
+    def closed(self):
+        self.link.send({"t": "pinclose"})
+
+
+# ── the bouncing clock (the "idle_screen" setting = clock): the time, big, drifting round the screen and bouncing
+# off its edges like an old screensaver, so no pixel stays lit for long (no burn-in). "MP1" until the clock is set. ──
+class Saver:
+    STEP_MS = 150                           # one pixel this often
+
+    def __init__(self, app):
+        import random
+        self.app = app
+        self.x, self.y = random.randint(4, 60), random.randint(4, 30)
+        self.dx, self.dy = random.choice((-1, 1)), random.choice((-1, 1))
+        self.at = None
+        self.tick(clock.now())
+
+    def tick(self, now):
+        if self.at is not None and since(self.at, now) < self.STEP_MS:
+            return
+        self.at = now
+        from ember.screen import draw_big, text_width, W, H
+        from ember import font
+        if self.app.clock_set:
+            t = time.localtime()
+            text = "{}:{:02d}".format(t[3] % 12 or 12, t[4])
+        else:
+            text = "MP1"
+        w, h = 2 * text_width(text), 2 * font.ROWS
+        self.x += self.dx
+        self.y += self.dy
+        if self.x <= 0 or self.x + w >= W:
+            self.dx = -self.dx
+            self.x = max(0, min(self.x, W - w))
+        if self.y <= 0 or self.y + h >= H:
+            self.dy = -self.dy
+            self.y = max(0, min(self.y, H - h))
+        draw_big(self.app.screen.show_canvas(), self.x, self.y, text)
+        self.app.dirty = True
 
 
 # ── the Timer and Counter screens: drawn on the screen's card bitmap (screen.show_canvas) ──
