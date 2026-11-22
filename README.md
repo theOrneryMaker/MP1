@@ -6,7 +6,7 @@ button, a 128 x 64 OLED screen, and (optionally) LEDs and a buzzer, on a **YD-RP
 Ember was built for office work: typing long, repetitive orders and forms, sharing those macros with coworkers,
 and keeping the everyday shortcuts one press away.
 
-**Website (the page, the phone app, the firmware):** https://theornerymaker.github.io/MP1_keymap_configurator/ember/
+**Website (the page, the phone app, the firmware):** https://theornerymaker.github.io/MP_Series_Macropad/ember/
 
 ## What it does
 
