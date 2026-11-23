@@ -1,4 +1,5 @@
-"""Stopping a running macro (actions.py + app.py's stop_wanted), on the PC with stand-ins for the keyboard, keypad,
+"""Stopping and pausing a running macro (actions.py + app.py stop_wanted / macro_pause: hold the encoder to stop, click to
+pause, turn while paused to pick a CSV row), on the PC with stand-ins for the keyboard, keypad,
 encoder and button.   py tools/dev/tests/sim_stop.py
 """
 import os
@@ -58,21 +59,26 @@ for name in ("stop_begin", "stop_wanted", "macro_stopped", "wait", "message", "m
     setattr(app, name, getattr(APP.App, name).__get__(app))
 act.wait, act.stop_begin, act.stop_wanted, act.stopped = app.wait, app.stop_begin, app.stop_wanted, app.macro_stopped
 act.paused, act.progress, act.finished = app.macro_pause, app.macro_progress, app.macro_finished
-# the pause screen's loop waits with time.sleep: here each sleep plays the next button state (True = up)
-button_script = []
-APP.time = types.SimpleNamespace(sleep=lambda s: setattr(app.button, "value", button_script.pop(0)) if button_script else None)
+app.cfg = {"encoder_reverse": False}
+# the pause screen's loop waits with time.sleep: here each sleep plays the next scripted thing: a button state
+# (True = up) or a function (e.g. a turn)
+script = []
+
+
+def fake_sleep(sec):
+    if script:
+        x = script.pop(0)
+        x() if callable(x) else setattr(app.button, "value", x)
+
+
+APP.time = types.SimpleNamespace(sleep=fake_sleep)
 stops = []
 real_stopped = app.macro_stopped
 act.stopped = lambda: (stops.append(1), real_stopped())
 
 
-def macro(steps):
-    from ember import keymap         # noqa: F401 (needs adafruit_hid.keycode: packed by hand here instead)
-    raise SystemExit
-
-
 def packed(steps):
-    """A macro packed as keymap.py does (key / text / delay only)."""
+    """A macro packed as keymap.py does (key / text / delay / mark only)."""
     out = bytearray(2)
     for kind, v in steps:
         if kind == "key":
@@ -83,69 +89,83 @@ def packed(steps):
         elif kind == "delay":
             ms = int(v * 1000)
             out += bytes((7, ms & 255, ms >> 8 & 255, ms >> 16 & 255, ms >> 24))
+        elif kind == "mark":
+            out += bytes((17, v[0] & 255, v[0] >> 8, v[1] & 255, v[1] >> 8))
     out[0], out[1] = len(steps) & 255, len(steps) >> 8
     return ("sequence", bytes(out))
 
 
-def run(name, steps, trigger, after_s=0.05):
-    """Run a macro; `trigger` (an input change) happens once after_s seconds of running."""
+def run(name, steps, triggers=()):
+    """Run a macro; each trigger (seconds, function) happens once that long after it started."""
     typed.clear()
     stops.clear()
     t0 = time.monotonic()
     real = act.check
+    left = list(triggers)
 
     def check():
-        if trigger and time.monotonic() - t0 > after_s and not getattr(check, "done", False):
-            check.done = True
-            trigger()
+        while left and time.monotonic() - t0 > left[0][0]:
+            left.pop(0)[1]()
         real()
     act.check = check
     act.press(packed(steps))
     act.check = real
     took = time.monotonic() - t0
     keys = sum(1 for t in typed if isinstance(t, tuple) and t[0] == "down")
-    print("{:34} stopped={} keys sent={:3} released all={} took {:.2f}s depth={}".format(
-        name, bool(stops), keys, "RELEASE ALL" in typed, took, act.depth))
+    print("{:40} stopped={} keys sent={:3} took {:.2f}s".format(name, bool(stops), keys, took))
     return bool(stops), keys
 
 
-many = [("key", 43)] * 300 + [("delay", 0.02)] * 0
+down = lambda: setattr(app.button, "value", False)
+up = lambda: setattr(app.button, "value", True)
+many = [("key", 43)] * 300
 ok = True
-s, k = run("no stop: all 300 keys", many, None)
+s, k = run("no stop: all 300 keys", many)
 ok &= (not s and k == 300)
-s, k = run("a key pressed", many, lambda: app.keys.events.append((3, True)))
-ok &= (s and k < 300)
-app.encoder.position = 0
-app.enc_pos = 0
-s, k = run("the encoder turned", many, lambda: setattr(app.encoder, "position", 1))
-ok &= (s and k < 300)
-s, k = run("during a 3 s wait", [("key", 43), ("delay", 3.0), ("key", 43)], lambda: app.keys.events.append((5, True)), 0.2)
+s, k = run("a key pressed: does nothing now", many, [(0.05, lambda: app.keys.events.append((3, True)))])
+ok &= (not s and k == 300)
+s, k = run("the encoder turned: does nothing now", many, [(0.05, lambda: setattr(app.encoder, "position", app.encoder.position + 1))])
+ok &= (not s and k == 300)
+s, k = run("encoder held 1 s: stops", many, [(0.05, down)])
+ok &= (s and 30 < k < 300)
+up()
+s, k = run("held during a 3 s wait: stops", [("key", 43), ("delay", 3.0), ("key", 43)], [(0.2, down)])
 ok &= s and k == 1
-s, k = run("during long text", [("text", "x" * 400)], lambda: app.keys.events.append((1, True)), 0.0)
-ok &= s
+up()
 app.button.value = False          # HOLD+KEY: the encoder is already down as it starts
-s, k = run("HOLD+KEY: held encoder alone", many, None)
+s, k = run("HOLD+KEY: held encoder alone", many)
 ok &= not s and k == 300
-app.button.value = True
-# the encoder pressed: a pause; let go, then a click: it goes on and finishes
-button_script[:] = [True, True, False, False, True]
-s, k = run("encoder pressed: pause, click: go on", many, lambda: setattr(app.button, "value", False))
-ok &= (not s and k == 300 and any(t == "PAUSED" for t, _ in screens))
-# paused, then a key: stops
+up()
+# a click: a pause; then a click: it goes on and finishes
+script[:] = [True, False, False, True]
 screens.clear()
-button_script[:] = [True] * 5
-s, k = run("paused, then a key: stops", many, lambda: (setattr(app.button, "value", False), app.keys.events.append((4, True))))
+s, k = run("click: pause, click: go on", many, [(0.05, down), (0.12, up)])
+ok &= (not s and k == 300 and any(t == "PAUSED" for t, _ in screens))
+# paused, then held: stops
+script[:] = [True] + [False] * 5
+s, k = run("paused, then held: stops", many, [(0.05, down), (0.12, up)])
 ok &= (s and k < 300)
-app.button.value = True
+up()
+# a CSV macro (rows 1-5): paused in row 4, turned back 2 (row 2), click: rows 2-5 again
+rows = []
+for r in range(1, 6):
+    rows += [("mark", (r, 5)), ("text", "r%d" % r)] + [("key", 43)] * 4
+turn_left = lambda: setattr(app.encoder, "position", app.encoder.position - 1)
+script[:] = [True, turn_left, turn_left, False, True]
+screens.clear()
+s, k = run("paused in row 4, back 2 rows, go on", rows, [(0.30, down), (0.35, up)])
+texts = [t[1] for t in typed if isinstance(t, tuple) and t[0] == "text"]
+paused = [l for t, l in screens if t == "PAUSED"]
+print("   typed:", " ".join(texts), "| paused screen:", paused[0][1], "->", paused[-1][1])
+ok &= (not s and texts[-4:] == ["r2", "r3", "r4", "r5"] and texts.count("r2") == 2 and "From row 2 of 5" in paused[-1][1])
 # a long macro: the progress screen, then the layer again at the end (from the layer view, as a key press starts it)
 app.mode = APP.NORMAL
 screens.clear()
-s, k = run("long macro: progress shows", [("key", 43)] * 120 + [("delay", 1.0)] + [("key", 43)] * 20, None)
+s, k = run("long macro: progress shows", [("key", 43)] * 120 + [("delay", 1.0)] + [("key", 43)] * 20)
 ok &= any(t == "RUNNING" for t, _ in screens) and screens[-1][0] == "LAYER"
-print("   progress screens:", [l[0] for t, l in screens if t == "RUNNING"][:3], "... then", screens[-1][0])
-app.button.value = True
+print("   progress screens:", [l[0] for t, l in screens if t == "RUNNING"][:3], "... then", screens[-1][0], "| says:", [l[3] for t, l in screens if t == "RUNNING"][:1])
 app.keys.events[:] = [(2, False)]  # the release of the key that started it arrives while it runs
 app.down_at[2] = 123
-s, k = run("its own key let go: not a stop", many, None)
+s, k = run("its own key let go: not a stop", many)
 ok &= (not s and app.down_at[2] is None)
 print("\nall passed" if ok else "\nFAILED")

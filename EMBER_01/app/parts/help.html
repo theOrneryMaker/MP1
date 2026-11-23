@@ -10,16 +10,20 @@ pad's console: click Connect… again and pick its other port. After the first t
 
 <section class="panel"><h3>The encoder</h3>
 <ul>
-<li><b>Turn:</b> what the layer's encoder does (volume, scroll, …). Set it in Keys → Layer settings.</li>
+<li><b>Turn:</b> what the layer's encoder does. Set it in Keys → Layer settings: pick a <b>Preset</b> (volume, scroll, zoom,
+tracks, browser tabs, redo / undo, arrow keys, pages, screen brightness, mouse) or set each turn yourself.</li>
 <li><b>Click:</b> Layer keys (or the layer picker, or Layer cards). <b>Double click:</b> the Spotify screen. <b>Triple click:</b> the home layer. Change them in Settings → Encoder.</li>
 <li><b>Hold and press a key:</b> the HOLD+KEY keys. Their screen (black on white) shows as soon as you hold; take your time.</li>
 <li><b>Hold and turn:</b> the Hold + turn functions in Settings → Encoder.</li>
 <li><b>Hold 1.5 s and let go</b> (no key, no turn): the TOOLS menu: Timer, Counter, Busy light, Settings, Mouse jiggle, Lock keys, Drive, About.</li>
 <li><b>Layer cards:</b> one big card a layer, its picture with the name below (or just the name, big): easy to read at arm's
 length. Turn to flip through them, click to pick. Give a layer its card picture in Keys → Layer settings → Layer card.</li>
+<li><b>Hold-to-confirm keys</b> (a key's <b>Hold to confirm</b>) have a small triangle in their top-right corner. Hold one
+and a bar fills along its bottom; when it's full (0.6 s) the key goes. Let go before that and nothing happens.</li>
 <li><b>In a menu, the layer picker or Layer cards:</b> turn to move, click to choose, hold to close. Settings are saved when the menu closes.
 A key press there only closes it: nothing is typed.</li>
 <li><b>Locked:</b> hold the encoder 3 s to unlock.</li>
+<li><b>A blinking dot on the top row</b> (left of the encoder's label): the mouse jiggle is on.</li>
 </ul></section>
 
 <section class="panel"><h3>Keys</h3>
@@ -30,6 +34,10 @@ A key press there only closes it: nothing is typed.</li>
 <b>With label</b> keeps it small above the words; <b>Alone, big</b> fills the key. <b>Smaller / Bigger</b> adjust an icon.</li>
 <li><b>Action:</b> Keys (up to 4 together; Capture… reads them from your keyboard), Text, Macro, Media, Open, Go to a layer,
 a pad function, or the mouse. <b>Repeat while held</b> and <b>Hold to confirm</b> are below it.</li>
+<li><b>Open keys:</b> while this page is connected, a web address (or an app link: mailto:, msteams:, ms-settings:, spotify:…)
+opens as a new tab here: quick, and nothing flashes up. The first time, the browser may block it as a pop-up (an icon at the
+right of the address bar): click it and choose <b>Always allow</b>. A program name (notepad.exe, or a full path to an .exe) always goes to
+the Windows Run box, because a web page can't start programs; so does everything while the page isn't connected.</li>
 </ul>
 <p><b>Every change goes to the pad at once</b> and is saved there. Ctrl+Z / Ctrl+Y undo and redo. If the pad's drive is showing
 on the computer, the pad can't save its files: changes then last until it restarts.</p></section>
@@ -38,12 +46,18 @@ on the computer, the pad can't save its files: changes then last until it restar
 <p>Choose <b>Macro</b> as the action. <b>Record…</b> adds what you type: letters run together into one Text step, shortcuts and
 keys like Enter become Keys steps, and pressing the same key again counts it (×2, ×3…). Tick <b>keep pauses as waits</b> to keep
 your timing. Click <b>Stop recording</b> when done.</p>
+<p>Each step can <b>then wait</b> a moment (seconds) after it; on a step that repeats (×49) it waits after every press: for a
+website that needs a moment between keys.</p>
 <p>Edit any step afterwards, change its count, move it, remove it, or <b>Add a step</b> (Keys, Text, Wait, Media, Mouse, Open).
 A few keys never reach the page (Win alone sometimes, Alt+Tab, Ctrl+W): add those as steps.</p>
 <p><b>Typing speed:</b> if a website drops characters or needs a moment between fields, set <b>Typing</b> to Careful or Slow
 (Settings → Keys &amp; screen), or give just that key its own <b>Typing speed</b> (in the key's panel). Normal types as fast as
 the computer takes it.</p>
-<p><b>Stopping a macro:</b> while one runs, press any key, turn the encoder or press it. It stops at once (even in the middle of a wait or a long text), lets go of every key, and the pad shows STOPPED. That press does nothing else.</p>
+<p><b>While a macro runs:</b> after a moment the pad shows its progress (for a CSV macro: <b>Row 37 of 80</b>).
+<b>Click the encoder to pause it</b>; click again to go on. While it's paused, <b>turn the encoder to pick a row</b> (“From row 35
+of 80”) and click: it goes on from the start of that row, back or ahead, e.g. to type a row again after the website lost it.
+<b>Hold the encoder (1 s) to stop it</b>: it lets go of every key and the pad shows STOPPED. Keys and turns do nothing while a
+macro runs, so nothing stops it by accident.</p>
 <details class="csvguide" id="helpCsv"><summary>Macros from a spreadsheet (.csv): the guide</summary>
 <p>For long, repetitive entry: 50–100 order lines, or the same form filled again and again. You build the list in Excel,
 save it as a .csv file, and the page turns it into one macro key. Press the key and the pad types the whole list.</p>
@@ -92,6 +106,7 @@ between fields with keys, not mouse clicks: if a form is only reachable with the
 <tr><td><code>{DATE}</code> · <code>{TIME}</code></td><td>today's date (11/21/2026) / the time (2:05 PM), typed when the macro runs</td></tr>
 <tr><td><code>{DATE YYYY-MM-DD}</code></td><td>the date your way (YYYY, MM, DD, M, D, HH, hh, h, mm, AMPM)</td></tr>
 <tr><td><code>{DATE MM/DD/YYYY +180}</code></td><td>a date counted from today: <code>+180</code> = 180 days ahead, <code>-30</code> = 30 days ago (<code>{DATE +90}</code> uses 11/21/2026 style)</td></tr>
+<tr><td><code>{CLICK}</code> · <code>{RIGHTCLICK}</code> · <code>{DOUBLECLICK}</code></td><td>a mouse click where the pointer is (it can't aim: point at the button first). <code>{CLICK 2 0.3}</code> works like keys</td></tr>
 <tr><td><code>{NEXT LINE}</code></td><td>the next number of the counter LINE: 1, then 2, 3… (any name; reset it on the pad: TOOLS → Counter)</td></tr>
 <tr><td><code>{{</code> and <code>}}</code></td><td>type a real { or }</td></tr>
 </table>
@@ -125,7 +140,7 @@ steps, and roughly how long it takes to type. Anything it doesn't understand is 
 
 <h4>7. Test it safely first</h4>
 <p>Open Notepad, click into it, and press the key. You see exactly what the website would get, with nothing at stake. Then
-click into the first field on the website and press the key for real. <b>To stop a macro part way, press any key, turn the encoder or press it:</b> it stops at once, lets go of everything, and the pad shows STOPPED. Nothing more is typed.</p>
+click into the first field on the website and press the key for real. <b>Click the encoder to pause</b> (turn to pick the row to go on from, click to go on); <b>hold it to stop</b>: the pad shows STOPPED and nothing more is typed.</p>
 
 <h4>8. Share it</h4>
 <p>Send the .csv itself (anyone can open and change it in Excel), or the finished key: <b>Copy key</b> and paste it into Webex
@@ -148,6 +163,9 @@ layer…; Load layer… under the Layers list adds one). Undo takes a loaded key
 Before you send one, check it holds nothing private.</p></section>
 
 <section class="panel"><h3>Layers</h3>
+<p><b>A layer file copied onto the pad's drive</b> (into its <code>layers</code> folder: one made here, or saved with
+<b>Save layer…</b>) is picked up by itself the next time the pad starts, after the other layers. While the pad's drive is
+showing on a computer, the pad can't save what this page sends: the page says so at the top of the Layers column.</p>
 <p><b>Starter layers…</b> (under the layers) adds a ready-made layer: Excel navigation, Windows, meetings (Webex and Teams),
 media, or the pad's own tools. Change anything after.</p>
 <p>The left column shows every layer; HOLD+KEY is last. Under the selected layer: <b>Layer settings</b> and <b>Delete…</b>.

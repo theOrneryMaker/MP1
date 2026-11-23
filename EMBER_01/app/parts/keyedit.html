@@ -177,7 +177,9 @@ function actionForm(kind, key) {
         $('fMedia').onchange = () => commit();
     } else if (kind === 'open') {
         box.innerHTML = `<input class="field" id="fOpen" placeholder="https://… or a program, like notepad.exe" value="${esc(a && a.kind === 'open' ? a.value : '')}">
-            <span class="sub">A web address opens in the browser while the page is connected; anything else goes to the Windows Run box.</span>`;
+            <span class="sub">With the page connected, a web address (or an app link like mailto:, msteams:, ms-settings:) opens in this
+              browser (allow pop-ups for the page once). A program name always goes to the Windows Run box: browsers can't start
+              programs. Without the page, everything uses the Run box.</span>`;
         $('fOpen').oninput = () => { clearTimeout(labelTimer); labelTimer = setTimeout(() => commit('open'), 400); };
     } else if (kind === 'layer') {
         box.innerHTML = sel('fLayer', KM.layers.map(L => [L.data.name, L.data.name]), a && a.kind === 'layer' ? a.value : KM.layers[0].data.name);
@@ -281,7 +283,7 @@ function commit(join) {
 // the key's cell as the pad will draw it, and the picture
 function previews(typing) {
     const key = current(), pic = pictureOf(key.pic), label = $('fLabel').value;
-    paintBitmap($('cellPreview'), drawKey(label, pic, kmLines()), 3);
+    paintBitmap($('cellPreview'), drawKey(label, pic, kmLines(), !!key.confirm), 3);
     if (!typing && pic && $('picPreview')) paintBitmap($('picPreview'), pic, 5);
     const w = PAD.CELL_W - (['boxes', 'dotted'].includes(kmLines()) ? 2 : 0);
     let hint;

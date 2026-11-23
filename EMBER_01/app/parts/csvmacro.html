@@ -44,13 +44,15 @@ function csvToken(tok) {
     }
     const times = n ? +n : 1;
     if (n && (!Number.isInteger(times) || times < 1 || times > CSV_MAX_TIMES)) throw new Error(`{${t}}: the count should be 1-${CSV_MAX_TIMES}`);
-    if (gap !== undefined) {                // {F7 49 0.2}: 49 presses, 0.2 s apart (for a page that needs a moment after each)
+    if (gap !== undefined) {                // {F7 49 0.2}: 49 presses, a 0.2 s wait after each (for a page that needs a moment)
         const g = +gap;
         if (!(g > 0) || g > CSV_MAX_WAIT) throw new Error(`{${t}}: the gap is in seconds, like {F7 49 0.2} (up to ${CSV_MAX_WAIT})`);
-        const one = csvToken(name);
-        const out = [];
-        for (let i = 0; i < times; i++) { if (i) out.push({delay: Math.round(g * 100) / 100}); out.push(Object.assign({}, one)); }
-        return out;
+        return Object.assign({}, csvToken(name), times > 1 ? {times} : {}, {gap: Math.round(g * 100) / 100});
+    }
+    const click = {CLICK: 'left', LEFTCLICK: 'left', RIGHTCLICK: 'right', MIDDLECLICK: 'middle', DOUBLECLICK: 'left'}[name.toUpperCase().replace(/[\s_-]+/g, '')];
+    if (click) {                            // a mouse click where the pointer is ({DOUBLECLICK}: two quick ones)
+        const k = /^DOUBLE/i.test(name) ? 2 * times : times;
+        return Object.assign({click}, k > 1 ? {times: k} : {});
     }
     if (MEDIA_WORDS[name.toUpperCase()]) return Object.assign({media: name.toUpperCase()}, times > 1 ? {times} : {});
     const parts = name.split('+').map(p => p.trim()).filter(Boolean);
@@ -175,7 +177,7 @@ function csvMacro(text) {
         else merged.push(s);
     }
     let seconds = 0;
-    for (const s of merged) seconds += s.delay != null ? s.delay : s.text != null ? s.text.length * 0.012 : s.mark ? 0 : 0.02 * (s.times || 1);
+    for (const s of merged) seconds += s.delay != null ? s.delay : s.text != null ? s.text.length * 0.012 : s.mark ? 0 : (0.02 + (s.gap || 0)) * (s.times || 1);
     const first = sections[0];
     return {steps: merged, sections, rows: sections.reduce((n, s) => n + s.rows, 0), cols: first.cols, after: first.after, head: first.head, problems, seconds, sep};
 }

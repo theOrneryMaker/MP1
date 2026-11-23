@@ -4,6 +4,8 @@
 // A port that doesn't say hello within HELLO_WAIT_MS is the pad's console, not the Link.
 // In the MP1 phone app, window.MP1Serial (phone/serial.html) stands in for navigator.serial.
 const serialApi = () => window.MP1Serial || navigator.serial;
+// what a page can open for a key ("open" actions): web addresses, and app links Windows hands to their program
+const OPENABLE = /^(https?|mailto|ftp|tel|sip|msteams|ms-[a-z-]+|spotify|webex[a-z]*|zoommtg|zoomus|slack|onenote|outlook):/i;
 const VENDORS = [0x2E8A, 0x239A];           // Raspberry Pi, Adafruit
 const HELLO_WAIT_MS = 2500;
 const REQUEST_MS = 8000;
@@ -110,10 +112,10 @@ const Link = {
             delete this.pending[m.id];
             if (done) done(m);
             return;
-        } else if (m.t === 'open') {        // a key's web address: open it here
-            let ok = false;
-            if (/^https?:/i.test(m.url)) { const w = window.open(m.url, '_blank'); ok = !!w; }
+        } else if (m.t === 'open') {        // a key's web address or app link: open it here (the pad waits a moment, then
+            const ok = this.openHere(m.url);    // uses the Windows Run box if this didn't work)
             this.send({c: 'opened', id: m.id, ok});
+            this.emit({t: 'openresult', url: m.url, ok, openable: OPENABLE.test(m.url)});
         }
         this.emit(m);
     },
@@ -159,6 +161,15 @@ const Link = {
             off += part.length;
             if (progress) progress(off, bytes.length);
         } while (off < bytes.length);
+    },
+    // a key's address in this browser: web addresses and app links (mailto:, msteams:, ms-settings:, spotify:...).
+    // A program name can't be started from a page: those go to the Run box. The browser may block the first one as a
+    // pop-up (start.html says how to allow it).
+    openHere(url) {
+        if (!OPENABLE.test(url)) return false;
+        const w = window.open(url, '_blank');
+        if (w) { try { w.opener = null; } catch (e) { /* cross-origin already */ } }
+        return !!w;
     },
     // the computer's clock -> the pad (its date stamps and reminders; it keeps it until it's unplugged)
     sendTime() {

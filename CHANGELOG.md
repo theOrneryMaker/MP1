@@ -1,5 +1,19 @@
 # Changes
 
+## Ember 01.2 (2026-11-23)
+
+- Running macros: **hold the encoder (1 s) to stop**; a click pauses; keys and turns do nothing while a macro runs. While
+  paused, turn the encoder to pick the CSV row to go on from (back or ahead), then click.
+- Macro steps: a **then wait** time per step (after each press when it repeats); CSV `{F7 49 0.2}` is now one step.
+- CSV: `{CLICK}`, `{RIGHTCLICK}`, `{MIDDLECLICK}`, `{DOUBLECLICK}` (where the pointer is).
+- Hold-to-confirm keys: a corner mark, and a bar that fills while held.
+- Mouse jiggle: a blinking dot on the top row while it's on.
+- Encoder presets in the layer settings (volume, scroll, zoom, tracks, tabs, undo, arrows, pages, brightness, mouse).
+- Layer files copied into the pad's `layers` folder are loaded too; the page warns while the pad's drive is showing
+  (the pad can't save then).
+- Open keys: web addresses and app links open through the page again (allow pop-ups once); the clock is re-sent hourly.
+- Phone app 1.3.
+
 ## Ember 01.1 (2026-11-22)
 
 - Running macros: a progress screen ("Row 37 of 80" for CSV macros); click the encoder to pause, click again to go on

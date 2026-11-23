@@ -16,7 +16,8 @@ and keeping the everyday shortcuts one press away.
 - **Macros from a spreadsheet.** Write an order in a .csv (one column per field, the keys between fields in the
   header) and drop it on a key. `{TAB 2}`, `{ENTER}`, `{WAIT 0.5}`, `{F7 49 0.2}`, `{DATE MM/DD/YYYY +180}`,
   `{NEXT LINE}`, `{ROW}`, `{PAUSE Check the total}`, `{DATE +10 workdays}`, a `{FOOTER}` row and `#` comment rows.
-  A running macro shows its progress ("Row 37 of 80"); click the encoder to pause it, any key or a turn stops it.
+  A running macro shows its progress ("Row 37 of 80"); click the encoder to pause it (turn to pick the row to go on
+  from), hold it to stop. Any step can wait a moment after it; `{CLICK}` clicks where the pointer is.
   Typing speed (Normal / Careful / Slow) for websites that drop characters, for the pad or one key.
 - **Sharing.** Copy a key or a whole layer as text (paste it into a chat or an email), save it as a file, load it
   on another pad, from the page or the phone.

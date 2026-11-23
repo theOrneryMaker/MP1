@@ -58,4 +58,27 @@ km.replace(1, bytes(keymap._pack_layer({"keys": [{"label": "NEW", "text": "z"}]}
 app.hold_view = None                    # (link.change does this)
 check("a changed HOLD+KEY is made again", app.hold_keys()[0][0] == "NEW")
 check("HOLD_SCREEN is sooner (150 ms)", APP.HOLD_SCREEN == 150)
+# hold-to-confirm keys: the corner mark, the bar filling as it's held, the key going at CONFIRM, letting go early
+scr.show_layer("EXCEL", "Vol", [("Submit", None, True), ("Copy", None, False)] + [None] * 6)
+cell = scr.cells[0]
+check("a hold-to-confirm key: the corner mark", cell[26, 1] and cell[29, 1] and cell[29, 4] and not cell[28, 4] and not scr.cells[1][29, 1])
+taps = []
+from ember import clock
+t0 = clock.now()
+layer = types.SimpleNamespace(keys=[("text", "x")] + [None] * 7, confirm=[True] + [False] * 7, repeat=[False] * 8, speed=[None] * 8)
+happ = types.SimpleNamespace(layer=layer, down_at=[t0] + [None] * 7, mode=APP.NORMAL, confirmed=[False] * 8, bar_w=[0] * 8, screen=scr,
+                             dirty=False, actions=types.SimpleNamespace(tap=lambda a, s=None: taps.append(a)), next_repeat=[0] * 8, cfg={"repeat_speed": "normal"})
+kh = APP.App.keys_held.__get__(happ)
+kh(clock.add(t0, 300))
+check("held 0.3 s: the bar half full, not sent yet", 13 <= happ.bar_w[0] <= 15 and not taps and cell[1, 24] and not cell[20, 24], happ.bar_w[0])
+kh(clock.add(t0, 610))
+check("held 0.6 s: sent once, the bar gone", taps == [("text", "x")] and happ.bar_w[0] == 0 and not cell[5, 24])
+kh(clock.add(t0, 900))
+check("still held: not sent again", len(taps) == 1)
+happ.down_at[0], happ.confirmed[0] = t0, False
+kh(clock.add(t0, 200))
+key = APP.App.key.__get__(types.SimpleNamespace(mode=APP.NORMAL, b_down=False, screen=scr, layer=layer, down_at=happ.down_at, held=[None] * 8,
+                                                bar_w=happ.bar_w, dirty=False, actions=None))
+key(0, False, clock.add(t0, 250))
+check("let go early: the bar gone, nothing sent", happ.bar_w[0] == 0 and not cell[3, 24] and len(taps) == 1)
 print("all passed" if ok else "FAILED")

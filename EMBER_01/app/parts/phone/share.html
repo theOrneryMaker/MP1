@@ -8,7 +8,7 @@ async function phLoad() {
     Object.assign(PH, {loaded: false, err: '', incoming: null});
     if (!Link.pad) return drawShare();
     if (!/^ember/i.test(String(Link.pad.fw))) { PH.err = 'This pad runs the old firmware: update it to Ember first (above).'; return drawShare(); }
-    try { await loadKeymap(p => Link.readText(p)); PH.loaded = true; }
+    try { await loadKeymap(p => Link.readText(p), async () => (await Link.request({c: 'ls', path: 'layers'})).items.filter(i => !i[1]).map(i => i[0])); PH.loaded = true; }
     catch (e) { PH.err = e.message; }
     drawShare();
 }

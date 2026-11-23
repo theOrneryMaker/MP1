@@ -28,7 +28,14 @@ def _nothing():
 
 
 class Stopped(Exception):
-    """A running macro (or a long text, a wait) was stopped: App.stop_wanted saw a key, a turn or the encoder."""
+    """A running macro (or a long text, a wait) was stopped: the encoder held (App.stop_wanted / macro_pause)."""
+
+
+class GoTo(Exception):
+    """Paused, a row was picked (App.macro_pause): the macro goes on from that CSV row's start."""
+
+    def __init__(self, row):
+        self.row = row
 
 
 TEXT_OPS = {8: "text", 9: "open", 13: "tool", 14: "layer", 15: "number", 16: "stamp", 18: "pause"}
@@ -120,8 +127,14 @@ class Actions:
         r = self.stop_wanted()
         if r == "pause":
             r = self.paused(None) if self.paused is not None else False
-        if r:
+        self._after_pause(r)
+
+    def _after_pause(self, r):
+        """stop_wanted / paused said: False (go on), True (stop) or a row number (go on from there)."""
+        if r is True:
             raise Stopped()
+        if r is not False and r is not None:
+            raise GoTo(r)
 
     def press(self, action, speed=None):
         """Key down. key/combo/click stay held until release(). A macro, a text or a wait can be stopped
@@ -180,20 +193,31 @@ class Actions:
             self.wait(value)
         elif kind == "mark":                # (a CSV row starts: for the progress screen)
             self.mark = value
-        elif kind == "pause":               # wait for a click (any key or a turn stops)
-            if self.paused is not None and self.paused(value):
-                raise Stopped()
+        elif kind == "pause":               # wait for a click (a hold stops; a turn picks a row to go on from)
+            if self.paused is not None:
+                self._after_pause(self.paused(value))
         elif kind == "sequence":
-            gap, steps, n = self.speed[1], value[0] | value[1] << 8, 0
-            for step in macro_steps(value):
-                self.check()
-                self.tap(step)
-                self.feed()
-                n += 1
-                if self.progress is not None:
-                    self.progress(n, steps, self.mark)
-                if step[0] != "mark":
-                    time.sleep(max(0.1, gap) if step[0] == "media" else gap)
+            gap, steps, goto = self.speed[1], value[0] | value[1] << 8, None
+            while True:
+                n = 0
+                try:
+                    for step in macro_steps(value):
+                        n += 1
+                        if goto is not None:    # (going on from a picked row: everything before its mark is skipped)
+                            if step[0] != "mark" or step[1][0] != goto:
+                                continue
+                            goto = None
+                        self.check()
+                        self.tap(step)
+                        self.feed()
+                        if self.progress is not None:
+                            self.progress(n, steps, self.mark)
+                        if step[0] != "mark":
+                            time.sleep(max(0.1, gap) if step[0] == "media" else gap)
+                    return
+                except GoTo as g:
+                    self.release_all()
+                    goto = g.row
 
     def release(self, action):
         kind, value = action

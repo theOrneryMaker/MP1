@@ -30,7 +30,7 @@ function macroForm(box, steps) {
         `<option value="${esc(v)}"${String(v) === String(value) ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
     // a long macro (a CSV makes hundreds of steps): a short summary first; editing every step is one click away
     const long = steps.length > LONG_MACRO && box.dataset.full !== '1';
-    const summary = () => `<div class="msg">${steps.length} steps · types in about ${Math.max(1, Math.round(steps.reduce((t, s) => t + (s.delay != null ? s.delay : s.text != null ? s.text.length * 0.012 : 0.02 * (s.times || 1)), 0)))} s
+    const summary = () => `<div class="msg">${steps.length} steps · types in about ${Math.max(1, Math.round(steps.reduce((t, s) => t + (s.delay != null ? s.delay : s.text != null ? s.text.length * 0.012 : (0.02 + (s.gap || 0)) * (s.times || 1)), 0)))} s
         <div class="sub" style="margin-top:4px">${esc(steps.slice(0, 14).map(s => s.text != null ? '“' + s.text.slice(0, 24) + '”' : stepWord(s)).join(' · '))}${steps.length > 14 ? ' …' : ''}</div>
         <div class="row" style="margin-top:8px"><button class="btn small" type="button" id="showSteps">Show all ${steps.length} steps to edit them</button></div></div>`;
     box.innerHTML = long ? summary() + macroTools() : `<ol class="steps">${steps.map((s, n) => {
@@ -53,7 +53,8 @@ function macroForm(box, steps) {
         else if (kind === 'keys' && a && !['key', 'combo'].includes(a.kind)) { const d = describe(s); body = `<span class="sub">${esc(d[0] + (d[2] ? ': ' + d[2] : ''))}</span>`; }
         else body = `<div class="sKeys" data-n="${n}"></div>`;
         return `<li class="step"><div class="row">${sel('sKind', STEP_KINDS, kind, n)}
-              ${kind === 'delay' || kind === 'pause' ? '' : `<label class="sub times" title="Run this step this many times">× <input class="field sTimes" data-n="${n}" type="number" min="1" max="${MAX_TIMES}" value="${s.times || 1}"></label>`}
+              ${kind === 'delay' || kind === 'pause' ? '' : `<label class="sub times" title="Run this step this many times">× <input class="field sTimes" data-n="${n}" type="number" min="1" max="${MAX_TIMES}" value="${s.times || 1}"></label>
+              <label class="sub times" title="Wait this long after it (after each time, when it repeats): for a website that needs a moment">then wait <input class="field sGap" data-n="${n}" type="number" min="0" max="60" step="0.05" value="${s.gap || ''}" placeholder="0" style="width:64px"> s</label>`}
               <span class="stepbtns"><button class="btn small" type="button" data-sup="${n}" ${n ? '' : 'disabled'} title="Move up">↑</button>
               <button class="btn small" type="button" data-sdown="${n}" ${n < steps.length - 1 ? '' : 'disabled'} title="Move down">↓</button>
               <button class="btn small" type="button" data-sdel="${n}" title="Remove this step">Remove</button></span></div>${body}</li>`;
@@ -67,7 +68,8 @@ function macroForm(box, steps) {
 
     // each step's own fields
     const at = el => +el.dataset.n, steps2 = () => macroSteps();
-    const put = (n, step, join) => { const l = steps2(); l[n] = Object.assign(step, l[n].times > 1 && stepKind(step) !== 'delay' ? {times: l[n].times} : {}); setSteps(l, join); };
+    const put = (n, step, join) => { const l = steps2(), keep = !['delay', 'pause'].includes(stepKind(step));
+        l[n] = Object.assign(step, keep && l[n].times > 1 ? {times: l[n].times} : {}, keep && l[n].gap ? {gap: l[n].gap} : {}); setSteps(l, join); };
     box.querySelectorAll('.sKind').forEach(el => el.onchange = () => { put(at(el), stepFresh(el.value)); macroForm(box, steps2()); });
     box.querySelectorAll('.sText').forEach(el => el.oninput = () => { if (el.value) put(at(el), {text: el.value}, 'mtext' + at(el)); });
     box.querySelectorAll('.sOpen').forEach(el => el.oninput = () => { if (el.value.trim()) put(at(el), {open: el.value.trim()}, 'mopen' + at(el)); });
@@ -79,6 +81,12 @@ function macroForm(box, steps) {
         const k = Math.max(1, Math.min(50, parseInt(amt ? amt.value : 1, 10) || 1));
         put(n, m === 'up' || m === 'down' ? {scroll: m === 'up' ? k : -k} : {click: m});
         macroForm(box, steps2());
+    });
+    box.querySelectorAll('.sGap').forEach(el => el.onchange = () => {
+        const n = at(el), l = steps2(), v = Math.round(Math.max(0, Math.min(60, +el.value || 0)) * 100) / 100;
+        el.value = v || '';
+        if (v) l[n].gap = v; else delete l[n].gap;
+        setSteps(l);
     });
     box.querySelectorAll('.sTimes').forEach(el => el.onchange = () => {
         const n = at(el), v = Math.max(1, Math.min(MAX_TIMES, parseInt(el.value, 10) || 1)), l = steps2();

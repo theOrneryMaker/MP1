@@ -14,7 +14,7 @@
 #   tool "lock"   layer "EXCEL"   number "LINE" (types that counter's next number)   stamp "MM/DD/YYYY" (the date / time)
 #   in a macro only: pause "Pick the plant" (waits for a click, the note on the screen)   mark [row, rows] (the CSV row
 #   it's on: the progress screen)
-# A step in a sequence may add "times": 2-999. Problems go in ERRORS (shown at start-up), never a crash:
+# A step in a sequence may add "times": 2-999, and "gap": seconds to wait after it (after each time, when it repeats). Problems go in ERRORS (shown at start-up), never a crash:
 # a key with a problem shows "ERR" and does nothing.
 
 import json
@@ -200,7 +200,12 @@ def parse_action(data, where, extra=()):
                 _bad(place, "times should be 1-{}".format(MAX_TIMES))
                 ok = False
                 continue
-            parsed = parse_action(step, place, extra=("times",))
+            gap = step.get("gap", 0) if isinstance(step, dict) else 0
+            if gap and not (_number(gap) and 0 < gap <= 60):
+                _bad(place, "gap should be seconds, up to 60")
+                ok = False
+                continue
+            parsed = parse_action(step, place, extra=("times", "gap"))
             if not parsed:
                 ok = False
                 continue
@@ -216,6 +221,14 @@ def parse_action(data, where, extra=()):
             data = bytearray()
             if not _pack(parsed, data, place):
                 ok = False
+                continue
+            if gap:                         # a wait after it, each time: written out (the step and its wait, N times)
+                _pack(("delay", gap), data, place)
+                _repeat(out, last or b"", run)
+                last, run = None, 0
+                for _ in range(times):
+                    out.extend(data)
+                count += 2 * times
                 continue
             if data == last:
                 run += times
@@ -482,6 +495,14 @@ def _read(path):
         return json.load(f)
 
 
+def _read_layer(path):
+    """A layer file; one saved from the page to share ("MP1 Ember layer ..." on its first line) reads too."""
+    with open(path) as f:
+        text = f.read()
+    i = text.find("{")
+    return json.loads(text[i:] if i > 0 else text)
+
+
 def load(root="/", pin=None):
     """Read keymap.json and its layer files: a layers.Keymap (problems in ERRORS). pin: the secret pages' PIN, if they
     have one (without it, or with a wrong one, they aren't loaded: Keymap.PIN is True)."""
@@ -495,14 +516,23 @@ def load(root="/", pin=None):
         _bad("keymap.json", "isn't an Ember keymap (convert it in the Ember page)")
         index = {}
     names, packed, files = [], [], []
-    for file in (index.get("layers") or [])[:MAX_LAYERS]:
+    listed = [f for f in (index.get("layers") or []) if isinstance(f, str)]
+    # layer files copied into layers/ (not in keymap.json yet): loaded after the listed ones, by file name
+    try:
+        import os
+        dropped = sorted(f for f in os.listdir(root + "layers") if f.lower().endswith(".json") and f not in listed)
+    except OSError:
+        dropped = []
+    for file in (listed + dropped)[:MAX_LAYERS]:
+        extra = file not in listed
         try:
-            data = _read(root + "layers/" + file)
+            data = _read_layer(root + "layers/" + file)
         except (OSError, ValueError) as e:
             _bad(file, "can't be read ({})".format(e))
             continue
         if not isinstance(data, dict) or data.get("ember") != "layer":
-            _bad(file, "isn't an Ember layer")
+            _bad(file, "is a layer from the old firmware: add it in the page (Load layer...)" if isinstance(data, dict) and
+                 ("mp1_layer" in data or "layer" in data) else "isn't an Ember layer")
             continue
         name = data.get("name")
         if not isinstance(name, str) or not name or name in names:

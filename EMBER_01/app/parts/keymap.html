@@ -5,24 +5,30 @@
 //   KM.settings settings.json (only what differs from the defaults), or {}
 const KM = {index: null, layers: [], settings: {}, problems: []};
 
-async function loadKeymap(read) {
-    // read(path) -> text (the pad over the Link, or a test's own files)
+async function loadKeymap(read, list) {
+    // read(path) -> text (the pad over the Link, or a test's own files); list() -> the file names in layers/ (optional:
+    // layer files copied there but not in keymap.json yet are shown too, after the others, as the pad loads them)
     const problems = [];
     let index;
     try { index = JSON.parse(await read('keymap.json')); }
     catch (e) { throw new Error('keymap.json couldn\'t be read: ' + e.message); }
     if (!index || index.ember !== 'keymap') throw new Error('keymap.json isn\'t an Ember keymap. (Opening older keymaps comes in step 6.7.)');
     const layers = [];
-    for (const file of index.layers || []) {
+    const listed = (index.layers || []).filter(f => typeof f === 'string');
+    let dropped = [];
+    if (list) { try { dropped = (await list()).filter(f => /\.json$/i.test(f) && !listed.includes(f)).sort(); } catch (e) { /* no layers/ */ } }
+    for (const file of listed.concat(dropped).slice(0, MAX_LAYERS)) {
         try {
-            const data = JSON.parse(await read('layers/' + file));
-            if (data && data.ember === 'layer') layers.push({file, data});
-            else problems.push(file + ' isn\'t an Ember layer');
+            const text = await read('layers/' + file), a = text.indexOf('{');
+            const data = JSON.parse(a > 0 ? text.slice(a) : text);
+            if (data && data.ember === 'layer' && !layers.some(L => L.data.name === data.name)) layers.push({file, data});
+            else if (!dropped.includes(file)) problems.push(file + ' isn\'t an Ember layer');
         } catch (e) { problems.push(file + ': ' + e.message); }
     }
     let settings = {};
     try { const s = JSON.parse(await read('settings.json')); if (s && s.ember === 'settings') settings = s; }
     catch (e) { /* no settings.json: the defaults */ }
+    if (layers.some(L => !listed.includes(L.file))) index = Object.assign({}, index, {layers: layers.map(L => L.file)});     // (copied ones: listed from now on)
     Object.assign(KM, {index, layers, settings, problems});
     return KM;
 }
@@ -58,7 +64,7 @@ function viewKeys(layer) {
     const keys = [];
     for (let k = 0; k < 8; k++) {
         const key = (layer.data.keys || [])[k];
-        keys.push(key ? {label: key.label || '', pic: pictureOf(key.pic)} : null);
+        keys.push(key ? {label: key.label || '', pic: pictureOf(key.pic), hold: !!key.confirm && !!actionOf(key)} : null);
     }
     return keys;
 }

@@ -8,6 +8,27 @@ const LIGHT_SCENES = PADLIST.scenes, SCENE_COLORS = PADLIST.scene_colors, LIGHT_
 const TURN_KINDS = [['none', 'Nothing'], ['scroll', 'Scroll'], ['media', 'Media'], ['keys', 'Keys']];
 const nice = s => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase().replace(/_/g, ' ');
 let encTimer = null;
+// encoder presets (the old firmware's set): one pick fills the label, both turns and Speed up
+const ENC_PRESETS = [
+    ['volume', 'Volume', {label: 'Volume', cw: {media: 'VOL_UP'}, ccw: {media: 'VOL_DN'}, accel: true}],
+    ['scroll', 'Scroll (right = down)', {label: 'Scroll', cw: {scroll: -1}, ccw: {scroll: 1}, accel: true}],
+    ['zoom', 'Zoom (Ctrl+= / Ctrl+-)', {label: 'Zoom', cw: {combo: ['CONTROL', 'EQUALS']}, ccw: {combo: ['CONTROL', 'MINUS']}}],
+    ['tracks', 'Next / previous track', {label: 'Tracks', cw: {media: 'NEXT'}, ccw: {media: 'PREV'}}],
+    ['tabs', 'Browser tabs', {label: 'Tabs', cw: {combo: ['CONTROL', 'TAB']}, ccw: {combo: ['CONTROL', 'SHIFT', 'TAB']}}],
+    ['undo', 'Redo / undo', {label: 'Undo', cw: {combo: ['CONTROL', 'Y']}, ccw: {combo: ['CONTROL', 'Z']}}],
+    ['arrows_lr', 'Right / left arrow keys', {label: 'Arrows', cw: {key: 'RIGHT_ARROW'}, ccw: {key: 'LEFT_ARROW'}, accel: true}],
+    ['arrows_ud', 'Down / up arrow keys', {label: 'Up/Down', cw: {key: 'DOWN_ARROW'}, ccw: {key: 'UP_ARROW'}, accel: true}],
+    ['pages', 'Page down / page up', {label: 'Pages', cw: {key: 'PAGE_DOWN'}, ccw: {key: 'PAGE_UP'}}],
+    ['brightness', 'Screen brightness', {label: 'Bright', cw: {media: 'BRIGHTNESS_UP'}, ccw: {media: 'BRIGHTNESS_DOWN'}}],
+    ['mouse_x', 'Move the mouse right / left', {label: 'Mouse X', cw: {mouse: [5, 0]}, ccw: {mouse: [-5, 0]}, accel: true}],
+    ['mouse_y', 'Move the mouse down / up', {label: 'Mouse Y', cw: {mouse: [0, 5]}, ccw: {mouse: [0, -5]}, accel: true}],
+];
+// which preset an encoder is (the label aside), or '' (its own)
+function encPresetOf(e) {
+    const turns = x => JSON.stringify({cw: x.cw || null, ccw: x.ccw || null, accel: !!x.accel});
+    const p = ENC_PRESETS.find(([, , v]) => turns(v) === turns(e || {}));
+    return p ? p[0] : '';
+}
 
 // ─── the panel ───
 function layerPanel(L) {
@@ -39,6 +60,8 @@ function layerPanel(L) {
         ${sharePanelLayer()}
         ${L.secret ? '' : cardSection(d)}
         <div${L.secret ? ' hidden' : ''}><h4>Encoder</h4>
+        <div style="display:grid;gap:6px"><label class="lbl" for="ePreset">Preset</label>
+          ${sel('ePreset', [['', 'Your own (set below)']].concat(ENC_PRESETS.map(([v, t]) => [v, t])), encPresetOf(e))}</div>
         <div style="display:grid;gap:6px"><label class="lbl" for="eLabel">Label</label>
           <input class="field" id="eLabel" maxlength="20" value="${esc(e.label || '')}" autocomplete="off" placeholder="Shown on the top row"></div>
         <div class="turn" style="display:grid;gap:6px"><span class="lbl">Turn right</span>${sel('eKindcw', TURN_KINDS, turnKind(e.cw))}<div id="eBoxcw" style="display:grid;gap:6px"></div></div>
@@ -87,6 +110,12 @@ function layerPanel(L) {
     $('lDelete').onclick = () => askDelete(i);
 
     // encoder
+    $('ePreset').onchange = () => {
+        const p = ENC_PRESETS.find(x => x[0] === $('ePreset').value);
+        if (!p) return;
+        changeLayer(SEL.layer, {encoder: JSON.parse(JSON.stringify(p[2]))});
+        layerPanel(kmAll()[SEL.layer]);
+    };
     $('eLabel').oninput = () => { clearTimeout(encTimer); encTimer = setTimeout(() => setEncoder({label: $('eLabel').value}, 'elabel'), 350); };
     $('eLabel').onblur = () => { if (encTimer) { clearTimeout(encTimer); encTimer = null; setEncoder({label: $('eLabel').value}, 'elabel'); } };
     for (const t of ['cw', 'ccw']) $('eKind' + t).onchange = () => {

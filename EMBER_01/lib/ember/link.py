@@ -116,8 +116,14 @@ class Link:
                         "scenes": list(lights.SCENES) if lights else None,
                         "hw": {"lights": app.lights.pixels is not None, "sound": app.hw.get("buzzer", "none") != "none"},
                         "np": app.np_view is not None,
-                        "secret_pages": len(app.km.SECRET), "secret_note": app.km.SECRET_NOTE, "secret_pin": app.km.PIN})
+                        "secret_pages": len(app.km.SECRET), "secret_note": app.km.SECRET_NOTE, "secret_pin": app.km.PIN,
+                        "drive": self.drive_shown()})
         self.send(msg)
+
+    def drive_shown(self):
+        """The pad's drive is showing on the computer: it can't save what the page sends."""
+        from ember.app import drive_shown
+        return drive_shown()
 
     def hello(self):
         self.state("hello")

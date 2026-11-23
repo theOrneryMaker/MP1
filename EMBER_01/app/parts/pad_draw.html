@@ -62,7 +62,9 @@ function frame(bm, x0, y0, x1, y1, dotted) {
 }
 const fdiv = (a, b) => Math.floor(a / b);
 // one key's cell (31 x 26): the key-lines decoration, then picture + label, centred (screen.draw_key)
-function drawKey(label, pic, lines) {
+// a hold-to-confirm key's mark: a small triangle in the top-right corner (screen.hold_mark)
+function holdMark(bm) { for (let i = 0; i < 4; i++) hline(bm, PAD.CELL_W - 5 + i, PAD.CELL_W - 2, 1 + i); }
+function drawKey(label, pic, lines, hold) {
     const bm = bitmap(PAD.CELL_W, PAD.CELL_H);
     let x = 0, y = 0, w = PAD.CELL_W, h = PAD.CELL_H;
     if (lines === 'boxes' || lines === 'dotted') {
@@ -85,6 +87,7 @@ function drawKey(label, pic, lines) {
         const top = y + fdiv(h - (rows.length * PAD.LINE - 2), 2);
         rows.forEach((t, i) => drawText(bm, x + fdiv(w - textWidth(t), 2), top + i * PAD.LINE, t));
     }
+    if (hold) holdMark(bm);
     return bm;
 }
 // the whole layer view (screen.show_layer): keys = 8 x {label, pic bitmap} or null
@@ -101,7 +104,7 @@ function drawLayerView(name, encLabel, keys, lines = 'grid', lockBoxes = true) {
     } else if (lines === 'shelves') hline(bm, 0, PAD.W - 1, PAD.STATUS_H);
     for (let k = 0; k < 8; k++) {
         const key = keys[k];
-        const cell = drawKey(key ? key.label : '', key ? key.pic : null, lines);
+        const cell = drawKey(key ? key.label : '', key ? key.pic : null, lines, key && key.hold);
         const cx = PAD.COL_X[k % 4], cy = PAD.ROW_Y[k >> 2];
         for (let j = 0; j < PAD.CELL_H; j++) for (let i = 0; i < PAD.CELL_W; i++) bm.d[(cy + j) * PAD.W + cx + i] = cell.d[j * PAD.CELL_W + i];
     }

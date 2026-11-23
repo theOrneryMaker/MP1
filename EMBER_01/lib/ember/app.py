@@ -33,7 +33,8 @@ NORMAL, HOLD, PICKER, LAYER_KEYS, MESSAGE, LOCKED, MENU, SYNC, NOWPLAY, TOOLVIEW
 SOUND_BOOT, SOUND_LAYERS, SOUND_KEYS, SOUND_ALARMS = range(4)     # the "sounds" setting's switches ("1001")
 ALERT_MS = 600000
 PROGRESS_AFTER = 800        # ms a macro runs before its progress screen shows (short ones never flash it)
-PROGRESS_EVERY = 300        # ms between progress screen redraws (each costs a screen refresh)           # a timer / reminder alert stays this long (or until a key, a turn or a click)
+PROGRESS_EVERY = 300        # ms between progress screen redraws (each costs a screen refresh)
+STOP_HOLD = 1000            # ms the encoder is held to stop a running macro (a shorter click pauses it)           # a timer / reminder alert stays this long (or until a key, a turn or a click)
 MENU_IDLE = 15000          # ms without input: the TOOLS menu closes (and saves)
 DRIVE_SLOT = 8             # boot.py: b"MP1D" this many bytes from the end of the NVM = show the drive next start
 
@@ -104,6 +105,7 @@ class App:
         self.down_at = [None] * 8           # when each key went down (repeat / confirm)
         self.next_repeat = [0] * 8
         self.confirmed = [False] * 8
+        self.bar_w = [0] * 8                # a hold-to-confirm key's bar, as drawn (pixels)
         self.pick = 0
         self.lk_page = 0
         self.menu = None
@@ -177,7 +179,7 @@ class App:
             if labels is not None:
                 keys.append((labels[k], None) if labels[k] else None)
             else:
-                keys.append((layer.labels[k], picture(layer.pics[k])) if layer.present[k] else None)
+                keys.append((layer.labels[k], picture(layer.pics[k]), layer.confirm[k] and layer.keys[k] is not None) if layer.present[k] else None)
         self.screen.show_layer(title, enc_label, keys)
         keys = None
         gc.collect()
@@ -597,6 +599,9 @@ class App:
                 self.next_repeat[k] = clock.add(now, REPEAT[self.cfg["repeat_speed"]][0])
         else:
             self.down_at[k] = None
+            if self.bar_w[k]:                   # (a hold-to-confirm key let go early: its bar goes)
+                self.bar_w[k] = 0
+                self.screen.redraw_key(k)
             if self.held[k]:
                 self.actions.release(self.held[k])
                 self.held[k] = None
@@ -626,11 +631,24 @@ class App:
             if not action:
                 continue
             if layer.confirm[k]:
-                if not self.confirmed[k] and since(t, now) >= CONFIRM:
+                if self.confirmed[k]:
+                    continue
+                held = since(t, now)
+                if held >= CONFIRM:
                     self.confirmed[k] = True
-                    self.actions.tap(action, layer.speed[k])
+                    if self.bar_w[k]:
+                        self.bar_w[k] = 0
+                        self.screen.redraw_key(k)
                     self.screen.press(k, False)     # the flash ends: it went
+                    self.screen.refresh()
+                    self.actions.tap(action, layer.speed[k])
                     self.dirty = True
+                else:                           # the bar fills as it's held
+                    w = held * 29 // CONFIRM
+                    if w > self.bar_w[k]:
+                        self.bar_w[k] = w
+                        self.screen.hold_bar(k, w)
+                        self.dirty = True
             elif layer.repeat[k] and clock.diff(now, self.next_repeat[k]) >= 0:
                 self.actions.press(action, layer.speed[k])
                 self.next_repeat[k] = clock.add(now, REPEAT[self.cfg["repeat_speed"]][1])
@@ -875,6 +893,7 @@ class App:
     def stop_begin(self):
         self.stop_seen = 0
         self.stop_button = not self.button.value
+        self.stop_down_at = None            # a fresh press of the encoder while it runs: when (a hold stops it)
         self.prog_start, self.prog_at = clock.now(), None
 
     def stop_wanted(self):
@@ -888,25 +907,27 @@ class App:
         e, ev = self.stop_event, self.keys.events
         while ev.get_into(e):
             k = e.key_number
-            if k >= 8:
+            if k >= 8 or e.pressed:             # (keys pressed while it runs do nothing: too easy to abort by accident)
                 continue
-            if e.pressed:                       # (this press only stops it; its release comes later as usual)
-                return True
             self.down_at[k] = None              # a release while it runs (the key that started it): handled now
             if self.held[k]:
                 self.actions.release(self.held[k])
                 self.held[k] = None
             self.screen.press(k, False)
             self.dirty = True
-        pos = self.encoder.position
-        if pos != self.enc_pos:
-            self.enc_pos = pos                  # (the turn only stops it)
-            return True
+        self.enc_pos = self.encoder.position    # (a turn does nothing while it runs)
         down = not self.button.value
-        if down and not self.stop_button:   # the encoder pressed: pause (macro_pause), not stop
-            self.stop_button = True
-            return "pause"
-        self.stop_button = down
+        if down and not self.stop_button:       # the encoder pressed (fresh): a click pauses, a hold stops
+            self.stop_button, self.stop_down_at = True, now
+        elif down and self.stop_down_at is not None and since(self.stop_down_at, now) >= STOP_HOLD:
+            self.stop_down_at = None
+            self.swallow_button = True          # (held: stop; that press does nothing else)
+            return True
+        elif not down and self.stop_button:
+            self.stop_button = False
+            if self.stop_down_at is not None:   # let go before the hold time: a click, pause
+                self.stop_down_at = None
+                return "pause"
         return False
 
     def _prog_text(self, step, steps, mark):
@@ -922,47 +943,62 @@ class App:
         if self.prog_at is not None and since(self.prog_at, now) < PROGRESS_EVERY:
             return
         self.prog_at = now
-        self.screen.show_list("RUNNING", [self._prog_text(step, steps, mark), "", "Click: pause", "Key or turn: stop"])
+        self.screen.show_list("RUNNING", [self._prog_text(step, steps, mark), "", "Click: pause", "Hold: stop"])
         self.screen.refresh()
 
     def macro_pause(self, note):
-        """A running macro paused (the encoder pressed, or a {PAUSE} step): the screen says so until a click (go on);
-        any key or a turn stops it (True). The press that paused it, and the click that goes on, do nothing else."""
+        """A running macro paused (a click of the encoder, or a {PAUSE} step). A CSV macro: turn to pick the row to go
+        on from. Click: go on (where it was, or from the picked row's start); hold: stop. Keys do nothing. Returns
+        False (go on), a row number (from there) or True (stop)."""
         self.actions.release_all()
-        lines = [note or "Paused.", self._prog_text(0, 0, self.actions.mark) if self.actions.mark else "",
-                 "Click: go on", "Key or turn: stop"]
-        self.screen.show_list("PAUSED", lines)
-        self.screen.refresh()
+        mark, pick = self.actions.mark, None
+
+        def draw():
+            line = ("Row {} of {}".format(mark[0], mark[1]) if pick is None else "From row {} of {}".format(pick, mark[1])) if mark else ""
+            self.screen.show_list("PAUSED", [note or "Paused.", line, ("Turn: row  " if mark else "") + "Click: go on", "Hold: stop"])
+            self.screen.refresh()
+        draw()
         import keypad
         e, ev = self.stop_event or keypad.Event(), self.keys.events
         self.stop_event = e
-        letting_go = not self.button.value      # (the press that paused it: first it's let go)
-        clicking = False
+        letting_go = not self.button.value      # (the press that paused it, or the key held for HOLD+KEY: let go first)
+        down_at = None
         while True:
-            self.service(clock.now())
+            now = clock.now()
+            self.service(now)
             while ev.get_into(e):
-                if e.key_number < 8 and e.pressed:
-                    return True
+                k = e.key_number
+                if k < 8 and not e.pressed:     # (keys do nothing; a release still lets go of the key that started it)
+                    self.down_at[k] = None
+                    self.screen.press(k, False)
             pos = self.encoder.position
             if pos != self.enc_pos:
+                step = 1 if (pos > self.enc_pos) != bool(self.cfg["encoder_reverse"]) else -1
                 self.enc_pos = pos
-                return True
+                if mark:                        # pick the row to go on from
+                    pick = max(1, min(mark[1], (mark[0] if pick is None else pick) + step))
+                    draw()
             down = not self.button.value
             if letting_go:
                 letting_go = down
             elif down:
-                clicking = True
-            elif clicking:
+                if down_at is None:
+                    down_at = now
+                elif since(down_at, now) >= STOP_HOLD:
+                    self.swallow_button = True  # held: stop (that press does nothing else)
+                    return True
+            elif down_at is not None:
                 break                           # pressed and let go: a click, go on
             time.sleep(0.02)
         self.stop_button = False
+        self.stop_down_at = None
         self.b_raw = self.b_down = False        # (that click: nothing more)
         self.b_changed = clock.now()
         self.prog_at = None
-        self.screen.show_list("RUNNING", [self._prog_text(0, 0, self.actions.mark) if self.actions.mark else "Going on…", "",
-                                          "Click: pause", "Key or turn: stop"])
+        self.screen.show_list("RUNNING", [("From row {} of {}".format(pick, mark[1]) if pick else self._prog_text(0, 0, mark)) if mark else "Going on…", "",
+                                          "Click: pause", "Hold: stop"])
         self.screen.refresh()
-        return False
+        return pick if pick is not None else False
 
     def macro_finished(self):
         """The outer key press is over: the progress screen (if it showed) gives way to the layer."""
@@ -1052,6 +1088,9 @@ class App:
             if self.jiggle_on and clock.diff(now, self.jiggle_at) >= 0:
                 self.actions.jiggle(1)
                 self.jiggle_at = clock.add(now, random.randint(*JIGGLE_EVERY))
+            # the mouse jiggle's dot on the top row, blinking once a second while it's on
+            if self.screen.set_jiggle((now // 500) % 2 == 0 if self.jiggle_on else None) and self.mode == NORMAL:
+                self.dirty = True
             if since(locks_at, now) >= LOCKS_EVERY:
                 locks_at = now
                 caps, num = self.actions.caps_lock(), self.actions.num_lock()

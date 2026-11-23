@@ -142,8 +142,15 @@ def frame(bm, x0, y0, x1, y1, dotted=False):
     vline(bm, x1, y0 + 1, y1 - 1, dotted)
 
 
-def draw_key(bm, label, pic, lines):
-    """One key's cell: its decoration for the key-lines style, then picture + label, centred."""
+def hold_mark(bm):
+    """A hold-to-confirm key's mark: a small triangle in the cell's top-right corner."""
+    for i in range(4):
+        hline(bm, CELL_W - 5 + i, CELL_W - 2, 1 + i)
+
+
+def draw_key(bm, label, pic, lines, hold=False):
+    """One key's cell: its decoration for the key-lines style, then picture + label, centred (hold: the
+    hold-to-confirm mark in the corner)."""
     bitmaptools.fill_region(bm, 0, 0, CELL_W, CELL_H, 0)
     x, y, w, h = 0, 0, CELL_W, CELL_H
     if lines in ("boxes", "dotted"):
@@ -167,6 +174,8 @@ def draw_key(bm, label, pic, lines):
         top = y + (h - total) // 2
         for i, t in enumerate(rows):
             draw_text(bm, x + (w - text_width(t)) // 2, top + i * LINE, t)
+    if hold:
+        hold_mark(bm)
 
 
 class Screen:
@@ -215,8 +224,10 @@ class Screen:
         display.root_group = self.root
         self.name = self.enc = ""
         self.caps = self.num = False
+        self.jiggle = None                  # the mouse jiggle's dot on the top row: None (off), or lit True / False (it blinks)
         self.locks_shown = True
         self.overlay = None                 # a screen drawn over these (nowplay.py), hidden by a list / message
+        self.keys = [None] * 8              # what each cell shows (label, picture, hold): to draw one again
 
     # ── the status row and the lines behind the cells ──
     def _status(self):
@@ -234,6 +245,10 @@ class Screen:
                 b[nx, 0] = b[nx + 8, 0] = b[nx, STATUS_H - 1] = b[nx + 8, STATUS_H - 1] = 1
                 draw_text(b, nx + 2, 1, "N", font.CAPS)
             right = nx - 4
+        if self.jiggle is not None:         # the mouse jiggle is on: a dot (blinking) left of the encoder label
+            if self.jiggle:
+                bitmaptools.fill_region(b, right - 4, 3, right - 1, 6, 1)
+            right -= 7
         enc = fit(self.enc, right - text_width(self.name) - 8)
         draw_text(b, right - text_width(enc), 1, enc, font.CAPS)
 
@@ -266,8 +281,8 @@ class Screen:
         self._lines()
         for k in range(8):
             key = keys[k] if k < len(keys) else None
-            label, pic = key if key else ("", None)
-            draw_key(self.cells[k], label, pic, self.lines)
+            self.keys[k] = key
+            draw_key(self.cells[k], key[0] if key else "", key[1] if key else None, self.lines, bool(key and len(key) > 2 and key[2]))
             self.press(k, False)
         self.list_view.hidden = self.card_view.hidden = True
         self.layer_view.hidden = False
@@ -347,10 +362,28 @@ class Screen:
         if self.overlay is not None:
             self.overlay.hidden = True
 
+    def set_jiggle(self, state):
+        """The jiggle dot: None (off), True (lit) or False (the blink's dark half). True if it changed."""
+        if state == self.jiggle:
+            return False
+        self.jiggle = state
+        self._status()
+        return True
+
     def set_locks(self, caps, num):
         if (caps, num) != (self.caps, self.num):
             self.caps, self.num = caps, num
             self._status()
+
+    def hold_bar(self, k, width):
+        """A hold-to-confirm key held: a bar filling along the cell's bottom (width in pixels)."""
+        if width > 0:
+            bitmaptools.fill_region(self.cells[k], 1, CELL_H - 3, 1 + min(width, CELL_W - 2), CELL_H - 1, 1)
+
+    def redraw_key(self, k):
+        """Draw one cell again as it was (the hold bar gone)."""
+        key = self.keys[k]
+        draw_key(self.cells[k], key[0] if key else "", key[1] if key else None, self.lines, bool(key and len(key) > 2 and key[2]))
 
     def press(self, k, down):
         p = self.palettes[k]
