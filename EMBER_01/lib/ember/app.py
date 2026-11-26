@@ -11,6 +11,7 @@ from ember import clock
 from ember.clock import since
 from ember.screen import picture, KEY_LINES
 from ember import gestures
+from ember.actions import computer_listening
 
 DEBOUNCE = 30               # ms the button must be steady
 MULTI_CLICK = 250           # ms between the clicks of a double / triple click
@@ -36,6 +37,7 @@ PROGRESS_AFTER = 800        # ms a macro runs before its progress screen shows (
 PROGRESS_EVERY = 300        # ms between progress screen redraws (each costs a screen refresh)
 STOP_HOLD = 1000            # ms the encoder is held to stop a running macro (a shorter click pauses it)           # a timer / reminder alert stays this long (or until a key, a turn or a click)
 MENU_IDLE = 15000          # ms without input: the TOOLS menu closes (and saves)
+WATCHDOG_S = 8             # s the program may stop before the chip restarts itself (the RP2040's longest: 8.3)
 DRIVE_SLOT = 8             # boot.py: b"MP1D" this many bytes from the end of the NVM = show the drive next start
 
 
@@ -129,6 +131,7 @@ class App:
         self.num_tries = self.num_try_at = 0
         self.last_input = clock.now()
         self.sleep_state = 0                # 0 awake, 1 dimmed, 2 off
+        self.feed = lambda: None            # the watchdog's feed, once it runs (start_watchdog)
         # the encoder button
         self.b_raw = self.b_down = False
         self.b_changed = clock.now()
@@ -829,7 +832,8 @@ class App:
             self.sleep_state = max(self.sleep_state, 1)
 
     def service(self, now):
-        """Sound patterns and the light animation."""
+        """Sound patterns and the light animation (and the watchdog's feed: this runs in every loop that waits)."""
+        self.feed()
         self.sound.update(now)
         lights = self.lights
         if lights.pixels is None:
@@ -875,7 +879,8 @@ class App:
             return
         if num:
             self.num_tries = NUM_LOCK_TRIES     # on again: ready if it's turned off later
-        elif num is False and self.num_tries and since(self.num_try_at, now) >= NUM_LOCK_RETRY_MS:
+        elif num is False and self.num_tries and since(self.num_try_at, now) >= NUM_LOCK_RETRY_MS \
+                and computer_listening():
             self.num_tries -= 1
             self.num_try_at = now
             from ember.actions import NUM_LOCK_KEY
@@ -1018,6 +1023,21 @@ class App:
         self.message("STOPPED", ["", "The macro stopped.", "Nothing more is typed."])
         self.screen.refresh()
 
+    def start_watchdog(self):
+        """If the pad's program ever stops (a freeze), the chip restarts by itself after WATCHDOG_S seconds.
+        Every loop that waits feeds it (the main loop, service(), a macro's steps). It stops by itself when
+        the program ends normally (Ctrl+C, a reload)."""
+        try:
+            import microcontroller
+            from watchdog import WatchDogMode
+            wd = microcontroller.watchdog
+            wd.timeout = WATCHDOG_S
+            wd.mode = WatchDogMode.RESET
+            wd.feed()
+            self.feed = self.actions.feed = wd.feed
+        except Exception as e:
+            print("No watchdog:", e)
+
     def run(self):
         if self.sounds(SOUND_BOOT):
             self.sound.play(self.sound.STARTUP)
@@ -1029,11 +1049,13 @@ class App:
                 print("PROBLEM:", e)
             self.message("PROBLEMS", self.errors[:4] + ["(more on the console)"] * (len(self.errors) > 4), 6000)
         print("Ember running, free", gc.mem_free())
+        self.start_watchdog()
         import keypad
         event = keypad.Event()
         ev = self.keys.events
         locks_at = clock.now()
         while True:
+            self.feed()
             now = clock.now()
             if self.link is None and self.port is not None and self.port.connected:
                 from ember.link import Link

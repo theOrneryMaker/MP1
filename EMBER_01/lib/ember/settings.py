@@ -34,6 +34,9 @@ SETTINGS = {
     "sounds": ("1001", ("bits", 4)),                 # Boot, Layers, Keys, Alarms (user, 2026-11-21)
     "jiggle_at_start": (False, (False, True)),
 }
+# Hardware overrides: typed into settings.json by hand (for a hand-wired pad), never shown in the pad's menu or the
+# page, kept when the pad saves its settings. "led_count": 0-60 replaces wiring.json's LED count (default: none).
+OVERRIDES = {"led_count": (0, 60)}
 ERRORS = []
 
 
@@ -64,7 +67,13 @@ def load():
             continue
         if name == "sounds" and value in OLD_SOUNDS:
             value = OLD_SOUNDS[value]
-        if name not in SETTINGS:
+        if name in OVERRIDES:
+            low, high = OVERRIDES[name]
+            if isinstance(value, int) and not isinstance(value, bool) and low <= value <= high:
+                cfg[name] = value
+            else:
+                ERRORS.append("settings.json: {} should be {}-{}".format(name, low, high))
+        elif name not in SETTINGS:
             ERRORS.append("settings.json: unknown setting {}".format(name))
         elif not _ok(name, value):
             ERRORS.append("settings.json: {} can't be {!r}".format(name, value))
@@ -78,6 +87,9 @@ def save(cfg):
     out = {"ember": "settings"}
     for name, (d, _) in SETTINGS.items():
         if cfg.get(name, d) != d:
+            out[name] = cfg[name]
+    for name in OVERRIDES:
+        if name in cfg:
             out[name] = cfg[name]
     try:
         with open(PATH + ".new", "w") as f:

@@ -1,22 +1,27 @@
 #!/bin/bash
 # Build MP1 Ember's custom CircuitPython for the YD-RP2040, with the whole pad program frozen in:
-#   wsl -d Ubuntu-24.04 -u root -- bash "/mnt/c/PATH/TO/THE/PROJECT/tools/cpbuild/build.sh" EMBER_01
+#   wsl -d Ubuntu-24.04 -u root -- bash "/mnt/c/PATH/TO/THE/PROJECT/tools/cpbuild/build.sh" EMBER_01 [yd|pico2]
 # Needs setup.sh run once (shared with the original line: /opt/cp). Frozen: lib/ember (all of it),
 # adafruit_hid, neopixel and adafruit_displayio_ssd1306. The UF2 lands in <EMBER_NN>/BUILD_FROZEN/firmware/.
 # Its own board folder and staging folder, so the original line's build (MP1 ORIGINAL) is untouched.
 set -euo pipefail
 FW=${1:-EMBER_01}
+TARGET=${2:-yd}         # yd = YD-RP2040 (the pads); pico2 = Raspberry Pi Pico 2 (RP2350, for testing: 2026-11-24)
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"     # (the project folder: two up from here)
-BOARD=mp1_ember_yd_rp2040
+case "$TARGET" in
+    yd)    BOARD=mp1_ember_yd_rp2040; STOCK=vcc_gnd_yd_rp2040;  NAME="MP1 Ember (YD-RP2040)" ;;
+    pico2) BOARD=mp1_ember_pico2;     STOCK=raspberry_pi_pico2; NAME="MP1 Ember (Pico 2)" ;;
+    *)     echo "board: yd or pico2"; exit 1 ;;
+esac
 CP=/opt/cp
 export PATH=/opt/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/bin:$PATH
 . /opt/cpvenv/bin/activate
 
-# the board: the stock YD-RP2040 one, renamed, with the frozen code
+# the board: the stock one, renamed, with the frozen code
 B=$CP/ports/raspberrypi/boards/$BOARD
 rm -rf "$B"
-cp -r $CP/ports/raspberrypi/boards/vcc_gnd_yd_rp2040 "$B"
-sed -i 's/#define MICROPY_HW_BOARD_NAME .*/#define MICROPY_HW_BOARD_NAME "MP1 Ember (YD-RP2040)"/' "$B/mpconfigboard.h"
+cp -r $CP/ports/raspberrypi/boards/$STOCK "$B"
+sed -i "s/#define MICROPY_HW_BOARD_NAME .*/#define MICROPY_HW_BOARD_NAME \"$NAME\"/" "$B/mpconfigboard.h"
 cat >> "$B/mpconfigboard.mk" <<'MK'
 
 # MP1: built-in modules the MP1 doesn't use, left out (room for frozen code; approved 2026-11-14)
@@ -78,6 +83,9 @@ FROZEN_MPY_DIRS += $(TOP)/frozen/Adafruit_CircuitPython_HID
 FROZEN_MPY_DIRS += $(TOP)/frozen/Adafruit_CircuitPython_NeoPixel
 FROZEN_MPY_DIRS += $(TOP)/frozen/Adafruit_CircuitPython_DisplayIO_SSD1306
 MK
+if [ "$TARGET" = pico2 ]; then          # the RP2350's rp2pio needs memorymap
+    echo "CIRCUITPY_MEMORYMAP = 1" >> "$B/mpconfigboard.mk"
+fi
 
 # the Ember modules, staged on the Linux disk
 rm -rf /opt/emberfrozen

@@ -6,6 +6,44 @@ import time
 import random
 from adafruit_hid.keycode import Keycode
 from ember import clock
+try:
+    import supervisor
+except ImportError:                         # (the tests on a computer)
+    supervisor = None
+
+HID_RETRY_MS = 5000     # while the computer isn't listening, a report is tried at most this often
+
+
+def computer_listening():
+    """False while the computer is asleep, off or still starting (USB not ready)."""
+    return supervisor is None or supervisor.runtime.usb_connected
+
+
+class Hid:
+    """A USB keyboard / mouse / media device that never holds the pad up. adafruit_hid would wait for the
+    computer at start-up (forever, if it's asleep or off); this isn't a usb_hid.Device, so it doesn't, and Ember
+    starts without one. While the computer isn't listening a report is tried at most every few seconds (that try
+    can wake a sleeping computer; it takes up to 2 s) and the rest are dropped; a failed one is dropped too."""
+
+    def __init__(self, dev):
+        self.dev = dev
+        self.usage_page = dev.usage_page
+        self.usage = dev.usage
+        self.tried = None
+
+    def send_report(self, *args):
+        if not computer_listening():
+            now = clock.now()
+            if self.tried is not None and clock.since(self.tried, now) < HID_RETRY_MS:
+                return
+            self.tried = now
+        try:
+            self.dev.send_report(*args)
+        except OSError:
+            pass
+
+    def get_last_received_report(self, *args):
+        return self.dev.get_last_received_report(*args)
 
 CAPS_LOCK_LED = 0x02        # Keyboard.LED_CAPS_LOCK
 NUM_LOCK_LED = 0x01         # Keyboard.LED_NUM_LOCK
@@ -314,6 +352,8 @@ class Actions:
                 pass
 
     def jiggle(self, pixels):
+        if not computer_listening():        # (asleep: leave it asleep)
+            return
         dx, dy = random.choice(((pixels, 0), (-pixels, 0), (0, pixels), (0, -pixels)))
         self.mouse.move(x=dx, y=dy)
         self.mouse.move(x=-dx, y=-dy)

@@ -60,91 +60,152 @@ of 80”) and click: it goes on from the start of that row, back or ahead, e.g. 
 macro runs, so nothing stops it by accident.</p>
 <details class="csvguide" id="helpCsv"><summary>Macros from a spreadsheet (.csv): the guide</summary>
 <p>For long, repetitive entry: 50–100 order lines, or the same form filled again and again. You build the list in Excel,
-save it as a .csv file, and the page turns it into one macro key. Press the key and the pad types the whole list.</p>
+save it as a .csv file, and the page turns it into <b>one macro key</b>. Press the key and the pad types the whole list
+while you watch. Ten minutes setting up a file saves hours of typing.</p>
 
-<h4>1. The idea: one header row, then your data</h4>
-<p><b>Row 1 says what to press after each column.</b> Every row under it is one line of data, typed in turn.</p>
-<pre class="csvhelp">Part number {TAB},Quantity {TAB 2},Unit {TAB 3},Plant {ENTER}{WAIT 0.5}
+<h4>Quick start</h4>
+<ol>
+<li>On the website, click into the first field and <b>move through the form with only the keyboard</b> (Tab, Enter, arrow keys).
+Note what gets you from each field to the next.</li>
+<li>In Excel, <b>row 1</b>: one cell per field, with those keys in curly braces, e.g. <code>Part {TAB}</code>.</li>
+<li><b>Rows 2 and on</b>: your data, one row per order line or form.</li>
+<li>Save as <b>CSV</b>, then in <b>Keys</b> drop the file onto a key of the pad drawing (or Macro → <b>From a CSV…</b>).</li>
+<li>Try it in Notepad first, then for real. Click the encoder to pause, hold it to stop.</li>
+</ol>
+
+<h4>1. How it works: the header row says what happens after each column</h4>
+<pre class="csvhelp">Part number {TAB},Quantity {TAB 2},Unit {TAB},Plant {ENTER}{WAIT 0.5}
 4471-220,12,EA,Plant 3
 4471-221,6,EA,Plant 3</pre>
-<p>For each row the pad types <b>4471-220</b>, presses Tab, types <b>12</b>, presses Tab twice, types <b>EA</b>, Tab three
-times, types <b>Plant 3</b>, presses Enter, waits half a second, then starts the next row. The words before the braces
-(“Part number”) are only names for you: they're never typed. An empty cell types nothing but still presses its column's keys.</p>
-
-<h4>2. Two forms on one page</h4>
-<p><b>Both forms once per record</b> (say 7 fields at the top, 5 further down): put all 12 columns side by side in one row.
-The header of the top form's last column holds the keys that get you to the bottom form, e.g. <code>Notes {TAB 2}{WAIT 0.5}</code>.
-Find them by clicking through the page once with only the keyboard and counting the Tabs.</p>
-<p><b>The top form once, then many lines below it</b> (an order's details, then its 50 lines): start a new section with a row
-whose first cell begins with <code>{HEADER}</code>. It's a header like row 1, with its own columns and keys, and the rows under
-it use it until the next <code>{HEADER}</code> row:</p>
-<pre class="csvhelp">Customer {TAB},PO {TAB},Date {TAB},Ship via {TAB},Terms {TAB},Rep {TAB},Notes {TAB 2}{WAIT 0.5}
-Acme Supply,PO-88213,11/24/2026,UPS,Net 30,JC,Dock 4
-{HEADER}Part {TAB},Qty {TAB},Unit {TAB},Price {TAB},Plant {ENTER}{WAIT 1}
-4471-220,12,EA,4.10,Plant 3
-4471-221,6,EA,2.75,Plant 3
-{HEADER}Finish
-{CTRL+S}{WAIT 2}</pre>
-<p><b>Keys that run once, up front</b> (say 49 presses of F7 to create a form's columns): give them a section of their own
-at the top: a header row (any name, e.g. <code>Setup</code>), then one row with the keys, e.g. <code>{F7 49 0.2}{WAIT 1}</code>, then
-<code>{HEADER}</code> for the form itself.</p>
-<p>The last section is a single cell of keys: it saves the order once, after all the lines. A file can have as many sections
-as the page needs, and it's still one macro key. The preview lists each section with its rows and columns. The pad gets
-between fields with keys, not mouse clicks: if a form is only reachable with the mouse, look for a keyboard route first.</p>
-<h4>3. The keys you can use (in curly braces)</h4>
+<p>For each data row the pad goes across the columns: it <b>types the cell</b>, then <b>presses that column's keys</b> from
+row 1. For the first row above:</p>
 <table class="tokens">
-<tr><th>Write</th><th>Presses</th></tr>
+<tr><th>Column</th><th>Types</th><th>Then presses</th></tr>
+<tr><td>Part number</td><td>4471-220</td><td>Tab</td></tr>
+<tr><td>Quantity</td><td>12</td><td>Tab, Tab</td></tr>
+<tr><td>Unit</td><td>EA</td><td>Tab</td></tr>
+<tr><td>Plant</td><td>Plant 3</td><td>Enter, then waits 0.5 s</td></tr>
+</table>
+<p>…then it starts the next row. Worth knowing:</p>
+<ul>
+<li><b>The words in row 1 are only names for you</b> (“Part number”): they're never typed. Only the braces count.</li>
+<li><b>The last column's keys end the row</b>: that's where Enter, Save or “new line” goes, and a wait for the website.</li>
+<li><b>An empty cell types nothing</b> but still presses its column's keys, so the fields stay in step.</li>
+<li><b>Keys can go inside a data cell too</b>: <code>{CTRL+A}Plant 3</code> selects what's in the field, then types over it.</li>
+<li>Capitals don't matter: <code>{tab}</code> works.</li>
+</ul>
+
+<h4>2. Finding the keys for a form</h4>
+<ul>
+<li><b>Count the Tabs</b> from field to field: a skipped button or link means <code>{TAB 2}</code>.</li>
+<li><b>Drop-down lists</b>: typing the first letters usually picks the item (put the value in the cell), or use
+<code>{DOWN 3}{ENTER}</code>. Add a short wait after it if the list loads slowly.</li>
+<li><b>Check boxes</b>: <code>{SPACE}</code> ticks the one that has the focus.</li>
+<li><b>Buttons</b>: Tab to them and press <code>{ENTER}</code>; many forms also have shortcuts like <code>{ALT+N}</code> or <code>{CTRL+S}</code>.</li>
+<li>Only reachable with the mouse? Point at it and use <code>{CLICK}</code> (it clicks wherever the pointer is), or
+<code>{PAUSE Pick the plant}</code> to do that part yourself.</li>
+</ul>
+
+<h4>3. Everything you can write in braces</h4>
+<table class="tokens">
+<tr><th>Write</th><th>Does</th></tr>
+<tr><th colspan="2">Keys</th></tr>
 <tr><td><code>{TAB}</code> <code>{ENTER}</code> <code>{ESC}</code> <code>{SPACE}</code></td><td>Tab, Enter, Escape, Space</td></tr>
 <tr><td><code>{UP}</code> <code>{DOWN}</code> <code>{LEFT}</code> <code>{RIGHT}</code></td><td>the arrow keys</td></tr>
 <tr><td><code>{HOME}</code> <code>{END}</code> <code>{PGUP}</code> <code>{PGDN}</code></td><td>Home, End, Page Up, Page Down</td></tr>
 <tr><td><code>{DEL}</code> <code>{BACKSPACE}</code> <code>{INSERT}</code></td><td>Delete, Backspace, Insert</td></tr>
 <tr><td><code>{F1}</code> … <code>{F24}</code></td><td>the function keys</td></tr>
-<tr><td><code>{TAB 3}</code> <code>{DOWN 5}</code></td><td>a key several times (up to 999), as fast as the pad can</td></tr>
-<tr><td><code>{F7 49 0.2}</code></td><td>49 presses, 0.2 s apart (for a page that needs a moment after each press)</td></tr>
 <tr><td><code>{CTRL+S}</code> <code>{CTRL+SHIFT+V}</code> <code>{ALT+N}</code> <code>{WIN+R}</code></td><td>keys held together (up to 4)</td></tr>
+<tr><th colspan="2">Repeating</th></tr>
+<tr><td><code>{TAB 3}</code> <code>{DOWN 5}</code></td><td>a key several times (up to 999), as fast as it goes</td></tr>
+<tr><td><code>{F7 49 0.2}</code></td><td>49 presses with 0.2 s after each, for a page that needs a moment between them</td></tr>
+<tr><th colspan="2">Waiting</th></tr>
 <tr><td><code>{WAIT 0.5}</code></td><td>a pause, in seconds (up to 60)</td></tr>
-<tr><td><code>{DATE}</code> · <code>{TIME}</code></td><td>today's date (11/21/2026) / the time (2:05 PM), typed when the macro runs</td></tr>
-<tr><td><code>{DATE YYYY-MM-DD}</code></td><td>the date your way (YYYY, MM, DD, M, D, HH, hh, h, mm, AMPM)</td></tr>
-<tr><td><code>{DATE MM/DD/YYYY +180}</code></td><td>a date counted from today: <code>+180</code> = 180 days ahead, <code>-30</code> = 30 days ago (<code>{DATE +90}</code> uses 11/21/2026 style)</td></tr>
-<tr><td><code>{CLICK}</code> · <code>{RIGHTCLICK}</code> · <code>{DOUBLECLICK}</code></td><td>a mouse click where the pointer is (it can't aim: point at the button first). <code>{CLICK 2 0.3}</code> works like keys</td></tr>
-<tr><td><code>{NEXT LINE}</code></td><td>the next number of the counter LINE: 1, then 2, 3… (any name; reset it on the pad: TOOLS → Counter)</td></tr>
-<tr><td><code>{{</code> and <code>}}</code></td><td>type a real { or }</td></tr>
+<tr><td><code>{PAUSE Check the total}</code></td><td>stops and shows the note on the pad until you click the encoder: for anything you do by hand</td></tr>
+<tr><th colspan="2">Mouse</th></tr>
+<tr><td><code>{CLICK}</code> <code>{RIGHTCLICK}</code> <code>{DOUBLECLICK}</code></td><td>a click where the pointer is (it can't aim: point first). <code>{CLICK 2 0.3}</code> works like keys</td></tr>
+<tr><th colspan="2">Dates and numbers (worked out when the macro runs)</th></tr>
+<tr><td><code>{DATE}</code> · <code>{TIME}</code></td><td>today (11/21/2026) / the time (2:05 PM)</td></tr>
+<tr><td><code>{DATE YYYY-MM-DD}</code></td><td>the date your way: YYYY, YY, MM, M, DD, D, and HH, hh, h, mm, ss, AMPM for the time</td></tr>
+<tr><td><code>{DATE MM/DD/YYYY +180}</code></td><td>counted from today: <code>+180</code> days ahead, <code>-30</code> days back</td></tr>
+<tr><td><code>{DATE +10 workdays}</code></td><td>10 working days ahead (Saturdays and Sundays skipped; holidays aren't known)</td></tr>
+<tr><td><code>{ROW}</code></td><td>the row's number in its section: 1, 2, 3… (line numbers)</td></tr>
+<tr><td><code>{NEXT LINE}</code></td><td>the next number of a counter called LINE (any name): it keeps counting between runs; reset it on the pad, TOOLS → Counter</td></tr>
+<tr><th colspan="2">Typing braces</th></tr>
+<tr><td><code>{{</code> and <code>}}</code></td><td>a real { or }</td></tr>
 </table>
-<p>Capitals or not, it doesn't matter: <code>{tab}</code> works too. Keys can also go <b>inside any cell</b>: a cell holding
-<code>{CTRL+A}Plant 3</code> selects what's already in the field, then types over it.</p>
 
-<h4>4. Pauses: give the website time</h4>
-<p>The pad types far faster than a person. Wherever the website has to catch up, put a <code>{WAIT …}</code> after the key
-that makes it work: a drop-down list loading, a new order line appearing, a page saving. Start generous (0.5–1 s); once it
-runs cleanly, shorten them. The pauses in the header row happen on every row.</p>
+<h4>4. Sections: setup, forms in parts, a finish</h4>
+<p>One file can do more than one header. A row whose first cell starts with a <b>keyword</b> changes what follows:</p>
+<table class="tokens">
+<tr><th>Row starts with</th><th>Means</th></tr>
+<tr><td><code>{HEADER}</code></td><td>a new header row: the rows under it use its columns and keys (an order's top form once, then its lines)</td></tr>
+<tr><td><code>{FOOTER}</code></td><td>keys run once, after every row is done (save, submit)</td></tr>
+<tr><td><code>#</code></td><td>a note to yourself: skipped</td></tr>
+</table>
+<pre class="csvhelp"># order 88213 for Acme: header once, then the lines, then save
+Setup
+{F7 49 0.2}{WAIT 1}
+{HEADER}Customer {TAB},PO {TAB},Date {TAB},Ship via {TAB 2}{WAIT 0.5}
+Acme Supply,PO-88213,{DATE +3 workdays},UPS
+{HEADER}Line {TAB},Part {TAB},Qty {TAB},Plant {ENTER}{WAIT 1}
+{ROW},4471-220,12,Plant 3
+{ROW},4471-221,6,Plant 3
+{FOOTER}{PAUSE Check the total}{CTRL+S}{WAIT 2}</pre>
+<p>Line by line: a note; a <b>Setup</b> section whose single row presses F7 49 times (to create the form's columns); the
+order's top form, once; its lines in the form below, numbered by <code>{ROW}</code>; then a stop so you can check the total,
+and a save. It's still one key. <b>Both forms once per record</b> (say 7 fields, then 5 further down) is simpler: put all 12
+columns side by side in one row, and give the top form's last column the keys that get to the bottom form.</p>
 
-<h4>5. Build it in Excel</h4>
+<h4>5. Timing: give the website time</h4>
 <ul>
-<li>Type the header row in row 1, then paste your data below it.</li>
-<li><b>Before pasting, format the columns as Text</b> (select them, right-click → Format Cells → Text). Otherwise Excel turns
-<b>00123</b> into <b>123</b>, part numbers like <b>1-2</b> into dates, and long numbers into <b>1.2E+11</b>, and the pad types
-what Excel shows.</li>
-<li><b>File → Save As → CSV (Comma delimited)</b>. Commas inside a cell are fine: Excel puts that cell in quotes.</li>
-<li>The pad types the letters, numbers and symbols of a US keyboard. Accented letters or curly quotes (often pasted from
-email) can't be typed: the preview lists them with their row and column so you can fix them.</li>
+<li>The pad types far faster than a person. Put a <code>{WAIT …}</code> after anything that makes the website work: a drop-down
+loading, a new line appearing, a save. Start generous (0.5–1 s); shorten once it runs cleanly. Waits in row 1 happen on every row.</li>
+<li><b>The website drops characters?</b> Set the key's <b>Typing speed</b> to Careful or Slow (in the key's panel), or the
+whole pad's in Settings → Typing.</li>
+<li>In the macro editor, any step can <b>then wait</b> a moment after it.</li>
 </ul>
 
-<h4>6. Put it on a key</h4>
+<h4>6. While it runs</h4>
+<ul>
+<li>After a moment the pad shows <b>Row 37 of 80</b>.</li>
+<li><b>Click the encoder to pause.</b> Click again to go on where it stopped.</li>
+<li><b>Website lost a row?</b> Pause, <b>turn the encoder</b> to pick the row to go on from (“From row 35 of 80”), and click: it
+goes on from the start of that row. Ahead works too.</li>
+<li><b>Hold the encoder (1 s) to stop.</b> Keys and turns do nothing while it runs, so a bump can't stop it.</li>
+</ul>
+
+<h4>7. Building the file in Excel</h4>
+<ul>
+<li><b>Before pasting your data, format those columns as Text</b> (select them, right-click → Format Cells → Text). Otherwise
+Excel turns <b>00123</b> into <b>123</b>, part numbers like <b>1-2</b> into dates, and long numbers into <b>1.2E+11</b>, and the pad
+types what Excel shows.</li>
+<li><b>File → Save As → CSV.</b> Commas inside a cell are fine: Excel puts that cell in quotes. You can also copy the cells
+in Excel and paste them straight into the page.</li>
+<li>The pad types what's on a US keyboard. Accented letters and curly quotes (often pasted from email) can't be typed: the
+preview lists each one with its row and column.</li>
+</ul>
+
+<h4>8. Put it on a key, test, share</h4>
 <ol>
-<li>In <b>Keys</b>, pick a key, set its action to <b>Macro</b>, and click <b>From a CSV…</b>. (Or just drop the .csv file onto
-a key of the pad drawing.)</li>
-<li>Open your .csv, or paste the cells straight from Excel. The preview shows what follows each column, how many rows and
-steps, and roughly how long it takes to type. Anything it doesn't understand is listed with its row and column.</li>
-<li>Click <b>Replace the macro</b> (or <b>Add to the end</b>). It goes to the pad at once. Give the key a label you'll recognize.</li>
+<li><b>Keys</b> → pick a key → <b>Macro</b> → <b>From a CSV…</b> (or drop the .csv onto a key of the pad drawing). The preview
+shows each section, its rows and columns, what follows each column and roughly how long it takes; problems are listed with
+their row and column. Click <b>Replace the macro</b>, and give the key a label.</li>
+<li><b>Test in Notepad</b>: click into it and press the key. You see exactly what the website would get. Then do it for real.</li>
+<li><b>Share</b> the .csv (anyone can change it in Excel), or the finished key: <b>Copy key</b>, paste it into Webex or an email.</li>
 </ol>
 
-<h4>7. Test it safely first</h4>
-<p>Open Notepad, click into it, and press the key. You see exactly what the website would get, with nothing at stake. Then
-click into the first field on the website and press the key for real. <b>Click the encoder to pause</b> (turn to pick the row to go on from, click to go on); <b>hold it to stop</b>: the pad shows STOPPED and nothing more is typed.</p>
-
-<h4>8. Share it</h4>
-<p>Send the .csv itself (anyone can open and change it in Excel), or the finished key: <b>Copy key</b> and paste it into Webex
-or an email; the other person selects a key and presses Ctrl+V. See “Sharing keys and layers” below.</p>
+<h4>When something goes wrong</h4>
+<table class="tokens">
+<tr><th>You see</th><th>Try</th></tr>
+<tr><td>Text lands in the wrong field</td><td>A Tab count is off: walk the form with the keyboard again; or add a wait where the page changes</td></tr>
+<tr><td>Characters go missing</td><td>Typing speed Careful or Slow for that key</td></tr>
+<tr><td>A drop-down doesn't take the value</td><td>A wait after the field (<code>{TAB}{WAIT 0.3}</code>), or pick it with <code>{DOWN n}{ENTER}</code></td></tr>
+<tr><td>Rows run into each other</td><td>A longer wait at the end of row 1's last column</td></tr>
+<tr><td>Zeros or dates changed</td><td>Format the columns as Text in Excel before pasting, then save the CSV again</td></tr>
+<tr><td>“can't type …”</td><td>Replace accented letters or curly quotes in that cell</td></tr>
+<tr><td>Halfway through, the website hiccups</td><td>Click to pause, turn back to the row, click to go on</td></tr>
+</table>
 
 <h4>Examples to start from</h4>
 <ul class="examples">
@@ -203,6 +264,9 @@ Light scenes (.mp1scene.json) go into scenes/ by themselves; restart the pad to 
 files are protected here: change those in Keys and Settings.</li>
 <li><b>Player:</b> the pad's screen, live. Click a key to press it, or a layer to switch to it. <b>Always on top</b> puts it in a
 small window that stays above your other windows.</li>
+<li><b>A hand-wired pad with more or fewer lights:</b> the pad expects 4. Show the drive (hold the encoder button while plugging
+in), open settings.json in a text editor and add <code>"led_count": 8</code> (any number from 0 to 60) after
+<code>"ember": "settings",</code>. Then restart the pad. 0 turns the lights off.</li>
 </ul></section>
 
 <section class="panel"><h3>Timer, counter, date and busy light</h3>

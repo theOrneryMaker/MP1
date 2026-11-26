@@ -1,5 +1,14 @@
 # Changes
 
+## Ember 01.3 (2026-11-25)
+
+- The pad starts and runs without waiting for the computer: plugged into a sleeping or undocked laptop it no longer
+  hangs at start-up, and key presses while the computer sleeps are dropped instead of freezing the pad.
+- A watchdog: if the pad ever locks up, it restarts itself after 8 seconds.
+- A hand-wired pad with more or fewer lights: `"led_count": N` (0-60) in settings.json overrides the 4 LEDs (see Help).
+- Help: the CSV guide rewritten, with a quick start.
+- Build script: an optional Raspberry Pi Pico 2 (RP2350) target, for testing.
+
 ## Ember 01.2 (2026-11-23)
 
 - Running macros: **hold the encoder (1 s) to stop**; a click pauses; keys and turns do nothing while a macro runs. While
