@@ -54,6 +54,7 @@ label.pick select { margin-top: 4px; color: var(--fg); }
 <div class="wrap">
   <h1><span class="dot" id="dot"></span><span id="title">MP1 Ember</span></h1>
   <div id="noApp" class="warn" hidden></div>
+  <div id="newFw" class="warn" hidden></div>
 
   <div class="card">
     <dl id="info"><dt>Status</dt><dd>Not connected</dd></dl>
@@ -68,7 +69,7 @@ label.pick select { margin-top: 4px; color: var(--fg); }
     <div id="fuPkg"></div>
     <button class="primary" id="fuBtn">Check the pad</button>
     <button id="bkBtn">Back up only</button>
-    <button id="fuPkgBtn">Use another update package…</button>
+    <button id="fuPkgBtn">Use my own firmware file…</button>
     <input type="file" id="fuPkgFile" accept=".zip,application/zip" hidden>
     <div id="fuOut"></div>
     <div id="fuBoot" hidden>
@@ -104,6 +105,7 @@ label.pick select { margin-top: 4px; color: var(--fg); }
 <!-- @include app/parts/phone/serial.html -->
 <!-- @include app/parts/phone/fwimage.html -->
 <!-- @include app/parts/phone/plan.html -->
+<!-- @include app/parts/phone/releases.html -->
 <!-- @include app/parts/phone/update.html -->
 <!-- @include app/parts/phone/share.html -->
 <!-- @include app/parts/phone/main.html -->

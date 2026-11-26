@@ -166,7 +166,7 @@ const Link = {
     // A program name can't be started from a page: those go to the Run box. The browser may block the first one as a
     // pop-up (start.html says how to allow it).
     openHere(url) {
-        if (!OPENABLE.test(url)) return false;
+        if (!OPENABLE.test(url) || window.MP1Android) return false;     // (in the phone app: not on the phone)
         const w = window.open(url, '_blank');
         if (w) { try { w.opener = null; } catch (e) { /* cross-origin already */ } }
         return !!w;

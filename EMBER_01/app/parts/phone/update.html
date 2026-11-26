@@ -1,12 +1,14 @@
 <script>
-// ─── The full update (the app only): read the pad over its serial console (any firmware, even a broken one),
-// save a backup to the phone, plan the new drive (plan.html), then one flash through the boot ROM (fwimage.html).
+// ─── The full update: read the pad over its serial console (any firmware, even a broken one), save a backup
+// (the phone's / this computer's Downloads), plan the new drive (plan.html), then one flash through the boot ROM
+// (fwimage.html). In the app the two UF2 files go straight onto the RPI-RP2 drive over USB; in Chrome / Edge on a
+// computer the user picks the RPI-RP2 drive once and the page saves the two files onto it.
 // A stopped update is finished from update mode: Restore from a backup…. From FIRMWARE_04's phone page. ───
 const CON_CHUNK = 6144;                         // bytes per console read (8 KB of base64)
 const FLASH_BPS = 60 * 1024;                    // the boot ROM's speed, about (for the time estimate)
 const FU = {busy: false, plan: null, con: null, pkgs: null, picked: null};
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const kb = n => n < 1024 ? n + ' bytes' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
+const fuKb = n => n < 1024 ? n + ' bytes' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB';
 
 // The serial console (raw REPL: the pad's program stops, and the console runs Python)
 class Console {
@@ -103,8 +105,30 @@ async function consolePort() {
     if (!ports.length) { if (!await MP1Serial.allow().catch(() => false)) return null; ports = await MP1Serial.getPorts(); }
     return ports.find(p => p.info.index === 0 && (!dev || p.key.startsWith(dev + '#'))) || null;
 }
+// On a computer (Web Serial) a page can't tell the pad's two ports apart: the ones it may use that aren't the Link's
+// come first, then the Link's. Asks for a port when there's no other (run straight from the click: the browser's list
+// needs it). [] = the user cancelled.
+async function consolePortsDesk() {
+    const ours = p => !p.getInfo().usbVendorId || VENDORS.includes(p.getInfo().usbVendorId);
+    let ports = (await navigator.serial.getPorts()).filter(ours);
+    if (FU.askPort || !ports.some(p => p !== Link.port)) {
+        FU.askPort = false;
+        try { const p = await navigator.serial.requestPort({filters: VENDORS.map(v => ({usbVendorId: v}))}); ports = [p].concat(ports.filter(q => q !== p)); }
+        catch (e) { return []; }
+    }
+    return ports.filter(p => p !== Link.port).concat(ports.filter(p => p === Link.port));
+}
+// the console on one of these ports (each one tried; the Link's port doesn't answer like a console)
+async function openConsole(ports) {
+    for (const p of ports) {
+        const con = new Console(p);
+        try { await con.open(); await con.enter(); return con; }
+        catch (e) { await con.close(false); }
+    }
+    return null;
+}
 
-// the update packages: the app's own (assets/firmware) and one picked from the phone
+// the update packages built into the app (assets/firmware); releases and the user's own file: releases.html
 async function loadPkgs() {
     if (!FU.pkgs) {
         FU.pkgs = [];
@@ -112,17 +136,12 @@ async function loadPkgs() {
             try { FU.pkgs.push(await readPackage(b64Bytes(APP.asset('firmware/' + n)), 'built into the app')); } catch (e) { /* not a package */ }
         }
     }
-    return FU.picked ? [FU.picked, ...FU.pkgs] : FU.pkgs;
+    return FU.pkgs;
 }
 const fwName = fw => /^ember(\d+)$/i.test(String(fw)) ? 'Ember ' + String(fw).slice(5) : 'firmware ' + fw;
-const pkgName = p => `MP1 ${fwName(p.info.fw)} for ${p.info.board} (${p.source}${p.info.built ? ', built ' + p.info.built : ''})`;
-async function drawPkgs() {
-    const list = await loadPkgs();
-    $('fuPkg').innerHTML = list.length
-        ? '<div class="rows">' + list.map(p => `<div><strong>${esc(pkgName(p))}</strong></div>`).join('') + '</div>'
-        : '<p class="warn">No update package in this app: use another update package….</p>';
-}
-const pkgFor = async boardId => (await loadPkgs()).find(p => (p.info.board_ids || []).includes(boardId));
+const pkgName = p => `MP1 ${p.info.version ? 'Ember ' + p.info.version : fwName(p.info.fw)} for ${p.info.board} (${p.source}${p.info.built ? ', built ' + p.info.built : ''})`;
+// the pad's firmware in words: "Ember 01.4" (pads before 01.4 don't say which release)
+const padFwName = pad => pad.ver ? 'Ember ' + pad.ver : /^ember/i.test(String(pad.fw)) ? 'Ember (01.3 or older)' : fwName(pad.fw ?? '?');
 
 const setStep = (step, state, note) => { step[1] = state; step[2] = note; };     // (in place: a restore shows a slice)
 // steps on screen: [title, state ('' / 'now' / 'ok' / 'bad'), note (HTML)]
@@ -138,23 +157,30 @@ const mins = s => s < 90 ? (Math.round(s) <= 1 ? '1 second' : Math.round(s) + ' 
 async function fuCheck(backupOnly) {
     if (FU.busy) return;
     FU.busy = true; FU.plan = null; render();
-    const S = [['Read the pad', 'now', ''], ['Save a backup to the phone', '', '']].concat(backupOnly ? [] : [['Convert your keymap and files', '', ''], ['Make the update', '', '']]);
+    const S = [['Read the pad', 'now', ''], [`Save a backup to ${where()}`, '', '']].concat(backupOnly ? [] : [['Convert your keymap and files', '', ''], ['Make the update', '', '']]);
     const show = (extra = '') => fuSteps(S, extra);
     show();
     let con = null;
     try {
+        const desk = APP ? null : await consolePortsDesk();      // (first: the browser's port list needs the click)
+        if (desk && !desk.length) throw new Error('No port picked. Check the pad again and pick the pad\'s port.');
         Link.paused = true;
         if (Link.port) await Link.close();
-        const p = await consolePort();
-        if (!p) throw new Error('No pad plugged in (or MP1 isn\'t allowed to use it).');
-        con = new Console(p);
-        await con.open();
-        await con.enter();
+        if (desk) {
+            S[0][2] = 'Opening the pad\'s console…'; show();
+            con = await openConsole(desk);
+            if (!con) { FU.askPort = true; throw new Error('The pad\'s console didn\'t answer. Check the pad again, and in the list pick the pad\'s other port.'); }
+        } else {
+            const p = await consolePort();
+            if (!p) throw new Error('No pad plugged in (or MP1 isn\'t allowed to use it).');
+            con = new Console(p);
+            await con.open();
+            await con.enter();
+        }
         const [boardId, uid, frsize, blocks, label, version, canUf2] = (await con.run(PY_INFO)).trim().split(/\r?\n/).flatMap((l, i) => i === 2 ? l.split(' ') : [l.trim()]);
         const flashMB = flashFromStatvfs(+frsize, +blocks);
         if (!flashMB) throw new Error(`Can't tell this board's flash size (drive: ${blocks} × ${frsize} bytes).`);
-        const pkg = backupOnly ? null : await pkgFor(boardId);
-        if (!backupOnly && !pkg) throw new Error(`No update package for this board (${boardId}). Use another update package… made for it.`);
+        const pkg = backupOnly ? null : await chosenPkg(boardId, t => { S[0][2] = t; show(); });
         const listing = (await con.run(PY_WALK, 60000)).trim().split(/\r?\n/).filter(Boolean);
         const want = [], dirs = [];
         for (const line of listing) {
@@ -167,18 +193,18 @@ async function fuCheck(backupOnly) {
         let got = 0;
         const files = {};
         for (const [path, size] of want) {
-            S[0][2] = `${esc(path)}<br>${kb(got)} of ${kb(total)}` + bar(got, total);
+            S[0][2] = `${esc(path)}<br>${fuKb(got)} of ${fuKb(total)}` + bar(got, total);
             show();
             files[path] = await consoleFile(con, path, size, n => { got += n; });
         }
-        S[0] = ['Read the pad', 'ok', `${esc(boardId)} · ${flashMB} MB flash · drive “${esc(label)}” · ${want.length} files, ${kb(total)} · CircuitPython ${esc(version)}`];
+        S[0] = ['Read the pad', 'ok', `${esc(boardId)} · ${flashMB} MB flash · drive “${esc(label)}” · ${want.length} files, ${fuKb(total)} · CircuitPython ${esc(version)}`];
         // 2. the backup (what's on the pad now, before anything is changed)
         S[1][1] = 'now'; show();
         const name = `MP1_full_backup_${label.replace(/[^\w-]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.json`;
         const bk = {mp1_backup: 1, full: true, made: new Date().toISOString(), board_id: boardId, flash_mb: flashMB, label, uid, circuitpython: version,
                     dirs, files: Object.fromEntries(Object.entries(files).map(([p, b]) => [p, bytesB64(b)]))};
         await savePhone(name, new TextEncoder().encode(JSON.stringify(bk)), 'application/json');
-        S[1] = ['Save a backup to the phone', 'ok', `${esc(name)} in Downloads. Keep it until the pad works.`];
+        S[1] = [`Save a backup to ${where()}`, 'ok', `${esc(name)} in Downloads. Keep it until the pad works.`];
         if (backupOnly) {
             show('<p class="good"><strong>Done.</strong> The pad is starting again.</p>');
             await con.close(true); con = null;
@@ -193,11 +219,14 @@ async function fuCheck(backupOnly) {
         const img = fatImage(plan.files, flashMB, label);
         const uf2 = makeUf2(pkg.uf2, img.runs);
         const size = uf2.fw.length + uf2.drive.length;
-        S[3] = ['Make the update', 'ok', `${esc(pkgName(pkg))}<br>Drive: ${kb(img.used)} used of ${kb(img.size)}. Sending ${kb(size)} takes about ${mins(size / 2 / FLASH_BPS)}.`];
+        S[3] = ['Make the update', 'ok', `${esc(pkgName(pkg))}<br>Drive: ${fuKb(img.used)} used of ${fuKb(img.size)}. Sending ${fuKb(size)} takes about ${mins(size / 2 / FLASH_BPS)}.`];
         FU.plan = {uf2, pkg, canUf2: canUf2 === 'True'};
         FU.con = con; con = null;                       // stays paused in its console until Update or Cancel
-        show(`<div class="warn"><strong>Wipe and update?</strong> The pad restarts in update mode, gets Ember and your files, then starts by itself. Keep the cable in until it's back.${FU.plan.canUf2 ? '' : '<br><strong>This firmware can\'t restart into update mode by itself:</strong> when asked, hold the board\'s BOOT button while you unplug and replug it.'}</div>` +
+        const warn = fuWarnings();
+        show((warn.length ? `<div class="warn">${warn.join('<br>')}<label class="pick"><input type="checkbox" id="fuOk"> I understand: put this firmware on the pad</label></div>` : '') +
+             `<div class="warn"><strong>Wipe and update?</strong> The pad restarts in update mode, gets ${esc(pkgName(pkg))} and your files, then starts by itself. Keep the cable in until it's back.${FU.plan.canUf2 ? '' : '<br><strong>This firmware can\'t restart into update mode by itself:</strong> when asked, hold the board\'s BOOT button while you unplug and replug it.'}</div>` +
              '<button class="primary" id="fuGoBtn">Wipe and update</button><button id="fuCancelBtn">Cancel</button>');
+        if (warn.length) { $('fuGoBtn').disabled = true; $('fuOk').onchange = e => { $('fuGoBtn').disabled = !e.target.checked; }; }
         $('fuGoBtn').onclick = fuGo;
         $('fuCancelBtn').onclick = fuCancel;
     } catch (err) {
@@ -241,11 +270,12 @@ async function fuGo() {
     } catch (err) {
         const i = S.findIndex(s => s[1] === 'now');
         if (i >= 0) S[i] = [S[i][0], 'bad', esc(err.message)];
-        show('<p class="hint">Your backup is in Downloads. If the pad is still in update mode, Restore from a backup… finishes the job; otherwise unplug it, hold the BOOT button while you plug it back in, then Restore.</p>');
+        show('<p class="hint">Your backup is in Downloads. If the pad is still in update mode (the RPI-RP2 drive), Restore from a backup… finishes the job; otherwise unplug it, hold the BOOT button while you plug it back in, then Restore.</p>');
     } finally { FU.busy = false; Link.paused = false; render(); fuBootCheck(); }
 }
 // update mode (RPI-RP2) -> the two files sent. S[0] = the restart step, S[1] = sending.
 async function flashBoot(uf2, S, show) {
+    if (!APP) return flashDrive(uf2, S, show);
     let state = 'none';
     for (let i = 0; i < 100 && state === 'none'; i++) { state = APP.bootDrive(); if (state === 'none') await wait(300); }
     if (state === 'none') throw new Error('The pad didn\'t show up in update mode. Unplug it, hold the BOOT button while you plug it back in, then Restore from a backup….');
@@ -268,25 +298,87 @@ async function flashBoot(uf2, S, show) {
                 if (err && !last) throw new Error(err);      // (the last one may be cut short by the restart)
                 lba += chunk.length / 512; sent += chunk.length;
                 const left = (Date.now() - t0) / sent * (total - sent) / 1000;
-                S[1][2] = `${kb(sent)} of ${kb(total)}${sent > 65536 ? ' · about ' + mins(left) + ' left' : ''}` + bar(sent, total);
+                S[1][2] = `${fuKb(sent)} of ${fuKb(total)}${sent > 65536 ? ' · about ' + mins(left) + ' left' : ''}` + bar(sent, total);
                 show();
                 await wait(0);
             }
         }
     } finally { APP.uf2Close(); }
-    setStep(S[1], 'ok', `${kb(total)} in ${mins((Date.now() - t0) / 1000)}.`);
+    setStep(S[1], 'ok', `${fuKb(total)} in ${mins((Date.now() - t0) / 1000)}.`);
+}
+// On a computer: the user picks the RPI-RP2 drive (a click: browsers ask), then the page saves the two files onto it
+// (the firmware, then the drive; the pad restarts by itself when it has the second). The browser saves each as a
+// temporary file and renames it, so the last step may fail as the pad restarts: that's fine.
+// If the browser won't open the drive (some refuse a drive's top folder), the two files go into Downloads and the
+// user drags them onto RPI-RP2, the firmware first (the same copy as by hand: the pad restarts after the second).
+const UF2_NAMES = ['MP1_1_firmware.UF2', 'MP1_2_drive.UF2'];
+async function flashDrive(uf2, S, show) {
+    const ask = note => {
+        S[0][2] = note;
+        show((window.showDirectoryPicker ? '<button class="primary" id="fuDriveBtn">Choose the RPI-RP2 drive…</button>' : '') +
+             '<button id="fuDragBtn">Save the two files to drag in myself…</button>');
+    };
+    ask('The pad shows up as a drive called <strong>RPI-RP2</strong> (give it a few seconds). Choose that drive. If the browser ' +
+        'won\'t open it, save the two files instead and drag them onto RPI-RP2.');
+    let dir = null;
+    while (!dir) {
+        const d = await new Promise(ok => {
+            if ($('fuDriveBtn')) $('fuDriveBtn').onclick = () => window.showDirectoryPicker({id: 'mp1rp2', mode: 'readwrite'}).then(ok, () => ok(null));
+            $('fuDragBtn').onclick = () => ok('drag');
+        });
+        if (d === 'drag') return dragDrive(uf2, S, show);
+        if (!d) continue;                                   // cancelled: the buttons stay
+        let info = '';
+        try { info = await (await (await d.getFileHandle('INFO_UF2.TXT')).getFile()).text(); } catch (e) { /* not it */ }
+        if (/RP2/.test(info)) dir = d;
+        else ask(`“${esc(d.name)}” isn't the RPI-RP2 drive (it has no INFO_UF2.TXT). Choose the drive called <strong>RPI-RP2</strong>:`);
+    }
+    setStep(S[0], 'ok', '');
+    S[1][1] = 'now'; show();
+    const total = uf2.fw.length + uf2.drive.length, t0 = Date.now();
+    let sent = 0;
+    for (const [name, bytes] of [[UF2_NAMES[0], uf2.fw], [UF2_NAMES[1], uf2.drive]]) {
+        const last = bytes === uf2.drive;
+        try {
+            const w = await (await dir.getFileHandle(name, {create: true})).createWritable();
+            for (let off = 0; off < bytes.length; off += 65536) {
+                await w.write(bytes.subarray(off, off + 65536));
+                sent += Math.min(65536, bytes.length - off);
+                S[1][2] = `${fuKb(sent)} of ${fuKb(total)}` + bar(sent, total); show();
+            }
+            S[1][2] = `${fuKb(sent)} of ${fuKb(total)} · finishing ${last ? 'your files' : 'the firmware'}…`; show();
+            await w.close();
+        } catch (e) {
+            if (!last || sent < total) throw new Error(`Couldn't save ${name} onto RPI-RP2 (${e.message}).`);
+        }
+    }
+    setStep(S[1], 'ok', `${fuKb(total)} in ${mins((Date.now() - t0) / 1000)}.`);
+}
+async function dragDrive(uf2, S, show) {
+    await saveBytes(UF2_NAMES[0], uf2.fw);
+    await saveBytes(UF2_NAMES[1], uf2.drive);
+    setStep(S[0], 'ok', '');
+    setStep(S[1], 'now', `Saved to Downloads. Drag <strong>${UF2_NAMES[0]}</strong> onto the RPI-RP2 drive and let it finish, then ` +
+        `<strong>${UF2_NAMES[1]}</strong>. The pad restarts by itself after the second one (the drive disappears: that's right).`);
+    show();
+    FU.dragged = true;
 }
 async function waitBack(pkg, S, show) {
-    S[2][1] = 'now'; S[2][2] = 'Waiting for the pad to start (allow MP1 to use it if Android asks)…'; show();
+    const manual = FU.dragged;
+    FU.dragged = false;
+    if (manual) S[1][1] = 'ok';
+    S[2][1] = 'now'; S[2][2] = APP ? 'Waiting for the pad to start (allow MP1 to use it if Android asks)…' : manual ? 'Waiting for you to drag the two files in, then for the pad to start…' : 'Waiting for the pad to start…'; show();
     Link.paused = false;
-    for (let i = 0; i < 90 && !Link.pad; i++) {
-        if (i % 6 === 2 && !Link.port) await Link.connectNew().catch(() => {});
+    for (let i = 0; i < (manual ? 600 : 90) && !Link.pad; i++) {
+        if (i % 6 === 2 && !Link.port) await (APP ? Link.connectNew() : Link.autoConnect()).catch(() => {});
         await wait(1000);
     }
+    if (!Link.pad && !APP) throw new Error((manual ? 'It didn\'t connect again within 10 minutes.' : 'It didn\'t connect again within a minute and a half.') + ' If the pad\'s screen is on, click Connect… at the top; if it\'s dark, unplug it and plug it back in. If it still doesn\'t start, Restore from a backup….');
     const pad = Link.pad;
     if (!pad) throw new Error('It didn\'t come back within a minute and a half. Unplug it and plug it back in; if it still doesn\'t start, Restore from a backup….');
     const bad = (pad.errors || []).length;
-    setStep(S[2], bad ? 'bad' : 'ok', `${esc(fwName(pad.fw))}${String(pad.fw) === String(pkg.info.fw) ? '' : ` (expected ${esc(fwName(pkg.info.fw))})`} · ` +
+    const want = pkg.info.version || '';
+    setStep(S[2], bad ? 'bad' : 'ok', `${esc(padFwName(pad))}${String(pad.fw) === String(pkg.info.fw) && (!want || !pad.ver || pad.ver === want) ? '' : ` (expected ${esc(want ? 'Ember ' + want : fwName(pkg.info.fw))})`} · ` +
            `${(pad.layers || []).length} layers · ` + (bad ? 'start-up problems: ' + pad.errors.map(esc).join('; ') : 'no start-up problems'));
     show(bad ? '' : '<p class="good"><strong>Done.</strong> MP1 Ember.html is on the pad\'s drive too, for changes on a computer.</p>');
     phLoad();
@@ -294,7 +386,8 @@ async function waitBack(pkg, S, show) {
 
 // In update mode already (a stopped update, or the BOOT button): finish from a backup file
 function fuBootCheck() {
-    if (!APP || !$('fuBoot')) return;
+    if (!$('fuBoot')) return;
+    if (!APP) { $('fuBoot').hidden = FU.busy; return; }      // (a page can't see the drive: always offered)
     $('fuBoot').hidden = FU.busy || APP.bootDrive() === 'none';
 }
 async function fuRestore(file) {
@@ -307,13 +400,12 @@ async function fuRestore(file) {
         let bk;
         try { bk = JSON.parse(await file.text()); } catch (e) { throw new Error('That isn\'t a backup file (not JSON).'); }
         if (!bk || !bk.mp1_backup || !bk.files) throw new Error('That isn\'t an MP1 backup.');
-        if (!bk.flash_mb || !bk.board_id) throw new Error('This backup doesn\'t say which board it\'s from: use one made by this app (MP1_full_backup_….json).');
+        if (!bk.flash_mb || !bk.board_id) throw new Error('This backup doesn\'t say which board it\'s from: use one made by an update (MP1_full_backup_….json).');
         const files = Object.fromEntries(Object.entries(bk.files).map(([p, s]) => [p, b64Bytes(s)]));
         S[0] = ['Read the backup', 'ok', `${esc(file.name)}: ${Object.keys(files).length} files from ${esc(bk.label || '?')} (${esc(bk.board_id)}), ${esc((bk.made || '').slice(0, 10))}`];
         S[1][1] = 'now'; show();
-        const pkg = await pkgFor(bk.board_id);
-        if (!pkg) throw new Error(`No update package for ${bk.board_id}.`);
-        if (!bk.uid) throw new Error('This backup has no chip ID (made by an older app): its secret layers couldn\'t be kept. Use a newer backup.');
+        const pkg = await chosenPkg(bk.board_id, t => { S[1][2] = t; show(); });
+        if (!bk.uid) throw new Error('This backup has no chip ID (made by an older version): its secret layers couldn\'t be kept. Use a newer backup.');
         const plan = await planEmber(pkg, files, bk.dirs || [], bk.uid);
         const img = fatImage(plan.files, bk.flash_mb, bk.label || 'CIRCUITPY');
         const uf2 = makeUf2(pkg.uf2, img.runs);

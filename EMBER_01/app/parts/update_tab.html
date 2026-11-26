@@ -1,0 +1,80 @@
+<main id="updateView" class="page fu" hidden>
+<h2>Update the pad</h2>
+<div id="newFw" class="warn" hidden></div>
+<section class="panel">
+  <dl id="fuPad"></dl>
+  <p class="sub">Puts MP1 Ember on the pad in one go, from any firmware. It saves a backup first (to Downloads), converts your
+    keymap, secret layers and settings, keeps your wiring and other files, and puts this page (MP1 Ember.html) on the pad's drive.
+    <span id="fuDeskHint"></span></p>
+  <div id="fuPkg"></div>
+  <div class="row">
+    <button class="btn main" type="button" id="fuBtn">Check the pad</button>
+    <button class="btn" type="button" id="bkBtn">Back up only</button>
+    <button class="btn" type="button" id="fuPkgBtn">Use my own firmware file…</button>
+  </div>
+  <input type="file" id="fuPkgFile" accept=".zip,application/zip" hidden>
+  <div id="fuOut"></div>
+</section>
+<section class="panel" id="fuBoot" hidden>
+  <h3 id="fuBootTitle">Stuck in update mode?</h3>
+  <p class="sub" id="fuBootText"></p>
+  <div class="row"><button class="btn" type="button" id="fuRestoreBtn">Restore from a backup…</button></div>
+  <input type="file" id="fuRestoreFile" accept=".json,application/json" hidden>
+</section>
+<p class="sub" id="fuFrom"></p>
+</main>
+<script>
+// ─── The Update tab: the phone app's update (phone/update.html, releases.html), in the page. Shows over the other
+// tabs and works without a connected pad (an old or broken firmware never connects: the update uses its console).
+// In the app the update goes over USB; on a computer the page asks for the pad's console port and the RPI-RP2 drive. ───
+const phLoad = () => {};                    // (the phone page's share list; here the pad's hello reloads the keymap)
+function render() {                         // (update.html / releases.html call it when something changed)
+    const pad = Link.pad, n = newestRel();
+    $('fuPad').innerHTML = pad
+        ? `<dt>Pad</dt><dd>${esc(padFwName(pad))}${n && (!pad.ver || cmpVer(n.v, pad.ver) > 0) ? ` · <b class="good">Ember ${esc(n.v)} is out</b>` : n ? ' · the newest' : ''}</dd>`
+        : `<dt>Pad</dt><dd>${FU.busy ? 'Updating…' : 'Not connected'}${FU.busy ? '' : ': fine for an update (it uses the pad\'s console)'}</dd>`;
+    for (const id of ['fuBtn', 'bkBtn', 'fuPkgBtn', 'fuRestoreBtn']) $(id).disabled = FU.busy;
+    $('connectBtn').disabled = FU.busy;
+}
+function updateOpen() {
+    render(); drawPkgs(); fuBootCheck();
+    if (!REL.list && REL.state !== 'checking') relLoad();
+}
+$('fuDeskHint').textContent = APP ? '' : 'Plug the pad straight into this computer. The page asks for the pad\'s port, then for its RPI-RP2 drive (the pad in update mode).';
+$('fuBootText').textContent = APP
+    ? 'A pad in update mode (its RPI-RP2 drive): finish with a backup an update made, and Ember and your files go back on.'
+    : 'If an update stopped and the pad shows up as a drive called RPI-RP2, finish with the backup the update saved: Ember and your files go back on. (To get there by hand: unplug the pad, hold the board\'s BOOT button while you plug it back in.)';
+$('fuFrom').textContent = PAGE_FROM ? 'This page: ' + PAGE_FROM + '.' : '';
+$('fuBtn').addEventListener('click', () => fuCheck(false));
+$('bkBtn').addEventListener('click', () => fuCheck(true));
+$('fuPkgBtn').addEventListener('click', () => $('fuPkgFile').click());
+$('fuPkgFile').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    try { FU.picked = await readPackage(new Uint8Array(await f.arrayBuffer()), f.name); REL.choice = 'file'; drawPkgs(); }
+    catch (err) { $('fuOut').innerHTML = `<p class="bad">${esc(f.name)}: ${esc(err.message)}</p>`; }
+});
+$('fuRestoreBtn').addEventListener('click', () => $('fuRestoreFile').click());
+$('fuRestoreFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) fuRestore(f); });
+Link.on(m => { if (m.t === 'hello' || m.t === 'closed') { drawNewFw(); drawPkgs(); if (overlay === 'updateView') render(); } });   // (the warnings and the banner depend on the pad's firmware)
+if (APP) {
+    MP1Serial.addEventListener('connect', () => {           // a pad plugged into the phone: connect (Android asks once)
+        setTimeout(fuBootCheck, 800);
+        setTimeout(() => { if (!FU.busy && !Link.port) Link.connectNew().catch(() => {}); }, 1500);
+    });
+    MP1Serial.addEventListener('disconnect', e => { if (Link.port && e.target === Link.port) Link.close(); });
+    loadPkgs().then(() => { drawPkgs(); return relLoad(); });
+    setInterval(() => { if (!FU.busy && overlay === 'updateView') fuBootCheck(); }, 3000);
+} else {
+    FU.pkgs = [];                           // (no built-in firmware in a browser: the releases, or the user's own file)
+    relLoad();
+}
+// a new release: a note at the top of the page once (the banner sits in the Update tab)
+Link.on(m => {
+    const n = newestRel();
+    if (m.t !== 'hello' || !n || !/^ember/i.test(String(m.fw)) || (m.ver && cmpVer(n.v, m.ver) <= 0) || store.get('mp1_fw_told') === n.v) return;
+    store.set('mp1_fw_told', n.v);
+    toast(`Ember ${n.v} is out: the Update tab puts it on the pad.`);
+});
+</script>

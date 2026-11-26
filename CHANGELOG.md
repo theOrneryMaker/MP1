@@ -1,5 +1,20 @@
 # Changes
 
+## Ember 01.4 (2026-11-26)
+
+- An **Update** tab in MP1 Ember, on a computer and in the phone app: update a pad from any MP1 firmware in one go
+  (backup first, keymap and settings converted). On a computer (Chrome or Edge) the page asks for the pad's port, then
+  for its RPI-RP2 drive, or saves the two files for you to drag onto it. It can also finish from a backup if an update
+  stopped halfway.
+- Pick the release: the newest is chosen, older ones (to go back if something breaks) and your own package file can be
+  picked, with a warning and an "I understand" tick.
+- The pad reports its release number, so the page and the app can tell when a newer Ember is out.
+- Phone app 1.4: shows this website's MP1 Ember page (keys, settings, files and updates in one), with a copy built in
+  for when it's offline; checks for new Ember releases once a day and lets you know; a new icon.
+- The page fits a phone screen.
+- Help: "Updating the pad".
+- Released before testing on a real pad (the user's choice); fixes follow as patches.
+
 ## Ember 01.3 (2026-11-25)
 
 - The pad starts and runs without waiting for the computer: plugged into a sleeping or undocked laptop it no longer

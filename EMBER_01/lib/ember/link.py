@@ -41,6 +41,7 @@ import binascii
 from ember import clock
 
 FW = "ember01"
+VER = "01.4"            # the release (GitHub tag ember-01.4): the phone app compares it with the newest
 LAYER_FIELDS = ("encoder", "lights", "jiggle", "num_lock", "module_view", "pic")
 GONE_MS = 1000          # the page counts as gone after this long without the connected signal
 SYNC_MIN_MS = 1500      # the SYNCING screen shows at least this long
@@ -111,7 +112,7 @@ class Link:
         if kind == "hello":
             import sys
             lights = sys.modules.get("ember.lights")     # (the scenes, drop-ins too: only if the lights are in use)
-            msg.update({"fw": FW, "frozen": True, "layers": list(app.km.NAMES), "home": app.km.NAMES[app.km.HOME],
+            msg.update({"fw": FW, "ver": VER, "frozen": True, "layers": list(app.km.NAMES), "home": app.km.NAMES[app.km.HOME],
                         "errors": list(app.errors), "clock": getattr(app, "clock_set", False),
                         "scenes": list(lights.SCENES) if lights else None,
                         "hw": {"lights": app.lights.pixels is not None, "sound": app.hw.get("buzzer", "none") != "none"},

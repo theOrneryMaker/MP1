@@ -233,10 +233,6 @@ function csvBuilder(box, text) {
     host.scrollIntoView({block: 'nearest'});
 }
 function downloadText(name, text) {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([text], {type: 'text/plain'}));
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    saveBytes(name, new TextEncoder().encode(text), 'text/plain').catch(e => toast('Couldn\'t save ' + name + ': ' + e.message, 'bad'));
 }
 </script>

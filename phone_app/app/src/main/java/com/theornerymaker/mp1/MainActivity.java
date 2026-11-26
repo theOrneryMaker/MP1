@@ -19,9 +19,15 @@ import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
+import android.os.Handler;
+import android.os.Looper;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
 import com.hoho.android.usbserial.driver.CdcAcmSerialDriver;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
@@ -44,8 +50,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * MP1 app: the MP1 Ember phone page (assets/mp1_phone.html, built from MP1 EMBER/EMBER_01/app/phone.html) in a
- * WebView, with USB serial underneath.
+ * MP1 app: the MP1 Ember page in a WebView, with USB serial underneath. The page comes from the website (so it's
+ * always the newest, without a new app); when that can't be reached (no internet, the site down) the copy built into
+ * the app is used instead (assets/mp1_ember.html, built from MP1 EMBER/EMBER_01/app/ember.html).
+ * Only those two places are shown in the app (they get the bridge below); any other link opens in the browser.
  * The page talks to window.MP1Android (Bridge below); its MP1Serial stand-in turns that into the
  * same port objects Web Serial gives, so the page code is the same in Chrome and here.
  */
@@ -53,6 +61,16 @@ public class MainActivity extends Activity {
     static final String ACTION_PERM = "com.theornerymaker.mp1.USB_PERMISSION";
     static final int[] VENDORS = {0x2E8A, 0x239A};          // Raspberry Pi, Adafruit
     static final int PICK_FILE = 1;
+    static final String SITE = "https://theornerymaker.github.io/MP_Series_Macropad/ember/";
+    static final String SITE_PAGE = SITE + "mp1_ember.html";
+    static final String BUILT_IN = "file:///android_asset/mp1_ember.html";
+    static final int SITE_WAIT_MS = 12000;              // the website this slow: the built-in copy instead
+    static final int PAGE_LEVEL = 1;                    // the page must say <meta name="mp1-app" content="1"> (or more):
+                                                        // it works with this app's bridge (an older one doesn't)
+
+    boolean builtIn = false;                            // showing the built-in copy (the website couldn't be reached)
+    final Handler ui = new Handler(Looper.getMainLooper());
+    final Runnable siteTooSlow = () -> useBuiltIn("too slow");
 
     WebView web;
     UsbManager usb;
@@ -69,6 +87,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        catchCrashes();
         usb = (UsbManager) getSystemService(Context.USB_SERVICE);
         web = new WebView(this);
         WebSettings s = web.getSettings();
@@ -90,7 +109,45 @@ public class MainActivity extends Activity {
                 return true;
             }
         });
-        setContentView(web);
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest req) {
+                String url = req.getUrl().toString();
+                if (trusted(url)) return false;
+                try { startActivity(new Intent(Intent.ACTION_VIEW, req.getUrl())); } catch (Exception e) { /* nothing opens it */ }
+                return true;
+            }
+            @Override
+            public void onReceivedError(WebView v, WebResourceRequest req, WebResourceError err) {
+                if (req.isForMainFrame()) useBuiltIn(String.valueOf(err.getDescription()));
+            }
+            @Override
+            public void onReceivedHttpError(WebView v, WebResourceRequest req, WebResourceResponse r) {
+                if (req.isForMainFrame() && r.getStatusCode() >= 400) useBuiltIn("HTTP " + r.getStatusCode());
+            }
+            @Override
+            public void onPageFinished(WebView v, String url) {
+                if (!url.startsWith(SITE)) return;
+                ui.removeCallbacks(siteTooSlow);
+                v.evaluateJavascript("(function(){var m=document.querySelector('meta[name=mp1-app]');return m?m.content:'0';})()", level -> {
+                    int n = 0;
+                    try { n = Integer.parseInt(level.replace("\"", "").trim()); } catch (Exception e) { /* not a number */ }
+                    if (n < PAGE_LEVEL) useBuiltIn("the website's page is older than this app");
+                });
+            }
+        });
+        // Android 15 draws apps under the status and navigation bars: keep the page clear of them
+        // (a WebView ignores its own padding: it sits in a frame that's padded instead)
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        frame.setBackgroundColor(0xFF15100D);
+        web.setBackgroundColor(0xFF15100D);
+        frame.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        if (Build.VERSION.SDK_INT >= 30) frame.setOnApplyWindowInsetsListener((v, insets) -> {
+            android.graphics.Insets b = insets.getInsets(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout());
+            v.setPadding(b.left, b.top, b.right, b.bottom);
+            return android.view.WindowInsets.CONSUMED;
+        });
+        setContentView(frame);
 
         IntentFilter f = new IntentFilter(ACTION_PERM);
         f.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
@@ -98,7 +155,19 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(usbEvents, f, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(usbEvents, f);
 
-        web.loadUrl("file:///android_asset/mp1_phone.html");
+        web.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
+        ui.postDelayed(siteTooSlow, SITE_WAIT_MS);
+        web.loadUrl(SITE_PAGE);
+
+        // new firmware on GitHub: checked about once a day in the background, told as an Android notification
+        // (never allowed to stop the app opening: without it there's just no daily check)
+        try {
+            UpdateCheck.schedule(this);
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 2);
+        } catch (Exception e) {
+            android.util.Log.w("MP1", "no daily firmware check: " + e);
+        }
     }
 
     @Override
@@ -145,6 +214,44 @@ public class MainActivity extends Activity {
             }
         }
     };
+
+    /** A crash: what went wrong goes into Downloads/MP1_crash.txt (to send in), then Android closes the app as usual */
+    void catchCrashes() {
+        Thread.UncaughtExceptionHandler android = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try {
+                java.io.StringWriter w = new java.io.StringWriter();
+                e.printStackTrace(new java.io.PrintWriter(w));
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.Downloads.DISPLAY_NAME, "MP1_crash.txt");
+                v.put(MediaStore.Downloads.MIME_TYPE, "text/plain");
+                Uri uri = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                if (uri != null) try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    out.write(("MP1 app " + Build.MODEL + " Android " + Build.VERSION.RELEASE + "\n" + w).getBytes("UTF-8"));
+                }
+            } catch (Throwable ignored) { /* nothing more to do */ }
+            if (android != null) android.uncaughtException(t, e);
+        });
+    }
+
+    /** The two places the app shows (and lets use the bridge): the website's Ember folder and its own copy */
+    static boolean trusted(String url) {
+        return url.startsWith(SITE) || url.equals(BUILT_IN) || url.startsWith(BUILT_IN + "#") || url.startsWith(BUILT_IN + "?");
+    }
+
+    /** The website couldn't be reached: the page built into the app (once; the next start tries the website again) */
+    void useBuiltIn(String why) {
+        runOnUiThread(() -> {
+            ui.removeCallbacks(siteTooSlow);
+            if (builtIn) return;
+            builtIn = true;
+            android.util.Log.i("MP1", "website page not used (" + why + "): the built-in copy");
+            web.stopLoading();
+            web.loadUrl(BUILT_IN);
+        });
+    }
+
+    static String safeName(String n) { return n.replaceAll("[^A-Za-z0-9._-]", "_"); }
 
     void js(String code) {
         runOnUiThread(() -> web.evaluateJavascript(code, null));
@@ -426,6 +533,48 @@ public class MainActivity extends Activity {
                 try { startActivity(Intent.createChooser(send, subject)); } catch (Exception e) { /* nothing to share with */ }
             });
         }
+
+        /** Download url in the background (no browser limits). saveAs "": the answer comes back as base64 in
+         *  MP1Net._done(id, "", b64); otherwise it's kept in the app's own folder (downloads/saveAs, read with saved())
+         *  and MP1Net._done(id, "", ""). A failure: MP1Net._done(id, why, ""). */
+        @JavascriptInterface
+        public void fetch(String id, String url, String saveAs) {
+            new Thread(() -> {
+                String err = "", body = "";
+                try {
+                    byte[] b = UpdateCheck.get(url);
+                    if (saveAs.isEmpty()) body = Base64.encodeToString(b, Base64.NO_WRAP);
+                    else {
+                        java.io.File dir = new java.io.File(getFilesDir(), "downloads");
+                        dir.mkdirs();
+                        java.io.File tmp = new java.io.File(dir, safeName(saveAs) + ".part");
+                        try (OutputStream out = new java.io.FileOutputStream(tmp)) { out.write(b); }
+                        if (!tmp.renameTo(new java.io.File(dir, safeName(saveAs)))) throw new Exception("couldn't keep the file");
+                    }
+                } catch (Exception e) {
+                    err = String.valueOf(e.getMessage());
+                }
+                js("MP1Net._done(" + JSONObject.quote(id) + "," + JSONObject.quote(err) + ",'" + body + "')");
+            }).start();
+        }
+
+        /** A file this app downloaded (downloads/name), base64; "" if it isn't there */
+        @JavascriptInterface
+        public String saved(String name) {
+            java.io.File f = new java.io.File(new java.io.File(getFilesDir(), "downloads"), safeName(name));
+            try (InputStream in = new java.io.FileInputStream(f)) {
+                ByteArrayOutputStream b = new ByteArrayOutputStream();
+                byte[] buf = new byte[65536];
+                for (int n; (n = in.read(buf)) > 0; ) b.write(buf, 0, n);
+                return Base64.encodeToString(b.toByteArray(), Base64.NO_WRAP);
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        /** The newest release the background check has told about (so the page doesn't tell again) */
+        @JavascriptInterface
+        public void seen(String version) { UpdateCheck.markSeen(MainActivity.this, version); }
 
         /** A file into the phone's Downloads folder; "" when it worked, otherwise why not */
         @JavascriptInterface

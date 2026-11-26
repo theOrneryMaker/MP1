@@ -1,0 +1,21 @@
+<script>
+// ─── Saving and copying, the same in a browser and in the MP1 Android app (APP: phone/serial.html). In the app a
+// saved file goes into the phone's Downloads (a page's download link does nothing there) and copying uses Android's
+// clipboard. The app hides what can't work on a phone: Spotify (its sign-in opens a window), Open a folder…. ───
+if (APP) document.documentElement.classList.add('inapp');
+async function saveBytes(name, bytes, mime = 'application/octet-stream') {
+    if (APP && APP.saveFile) { const why = APP.saveFile(name, bytesB64(bytes), mime); if (why) throw new Error(why); return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([bytes], {type: mime}));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+const savePhone = saveBytes;                // (update.html's name for it)
+async function copyText(text) {
+    if (APP && APP.copyText) { if (APP.copyText(text)) return; throw new Error('the phone didn\'t allow copying'); }
+    await navigator.clipboard.writeText(text);
+}
+// which copy of this page is showing (the app loads the website's, or its own when that can't be reached)
+const PAGE_FROM = !APP ? '' : location.protocol === 'file:' ? 'the copy built into the app' : 'the website';
+</script>

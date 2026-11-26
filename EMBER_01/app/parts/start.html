@@ -4,7 +4,8 @@ let VIEW = 'editor';
 function showView(v) {
     if (v) VIEW = v;
     for (const id of ['editor', 'settingsView', 'filesView', 'playerView', 'spotifyView']) $(id).hidden = !v || id !== VIEW;
-    document.querySelectorAll('[data-view]').forEach(b => { b.classList.toggle('on', b.dataset.view === VIEW); b.setAttribute('aria-current', b.dataset.view === VIEW ? 'page' : 'false'); });
+    markTabs();
+    document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-current', b.dataset.view === (overlay || VIEW) ? 'page' : 'false'));
     if (!v) return;
     $('startView').hidden = true;
     if (VIEW === 'editor') renderEditor();
@@ -14,26 +15,22 @@ function showView(v) {
     else filesOpen();
 }
 let startArgs = null;                       // the start screen showing (openold.html), to go back to from Keys
-let helpOver = null;                        // Help shows over whatever was showing (it works without a pad): what to bring back
+// Help and Update show over whatever was showing (they work without a pad): the page underneath stays as it is (hidden
+// by CSS: body.over), so a pad connecting meanwhile changes it without showing it
+const OVERLAYS = ['helpView', 'updateView'];
+let overlay = null;
+function markTabs() { document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('on', x.dataset.view === (overlay || VIEW))); }
+function setOverlay(v) {
+    overlay = v;
+    document.body.classList.toggle('over', !!v);
+    OVERLAYS.forEach(id => { if ($(id)) $(id).hidden = id !== v; });
+    markTabs();
+    if (v === 'updateView') updateOpen();
+}
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => {
     const v = b.dataset.view;
-    if (v === 'helpView') {
-        if (helpOver) return;
-        helpOver = ['noPad', 'startView', 'editor', 'settingsView', 'filesView', 'playerView', 'spotifyView'].filter(id => !$(id).hidden);
-        helpOver.forEach(id => { $(id).hidden = true; });
-        $('helpView').hidden = false;
-        document.querySelectorAll('[data-view]').forEach(x => x.classList.toggle('on', x === b));
-        return;
-    }
-    if (helpOver) {
-        $('helpView').hidden = true;
-        const back = helpOver;
-        helpOver = null;
-        if (back.includes('noPad') || back.includes('startView')) {
-            back.forEach(id => { $(id).hidden = false; });
-            if (back.includes('noPad')) { VIEW = v; showView(null); $('noPad').hidden = false; return; }
-        }
-    }
+    if (OVERLAYS.includes(v)) { setOverlay(v); return; }
+    if (overlay) setOverlay(null);
     if (!$('noPad').hidden) { VIEW = v; showView(null); return; }
     if (v === 'editor' && startArgs && !(KM.index && KM.index.ember === 'keymap')) { VIEW = v; showStart(...startArgs); return; }
     showView(v);

@@ -19,7 +19,7 @@ function toast(text, kind) {
 async function copyKey() {
     const key = keyOf(SEL.layer, SEL.key);
     if (!key) return toast('That key is empty: nothing to copy.');
-    try { await navigator.clipboard.writeText(keyText(key)); toast('Copied “' + key.label + '”: paste it into Webex or an email. ' + SHARE_WARN); }
+    try { await copyText(keyText(key)); toast('Copied “' + key.label + '”: paste it into Webex or an email. ' + SHARE_WARN); }
     catch (e) { toast('The browser didn\'t allow copying: use Save key… instead.', 'bad'); }
 }
 function saveKey() {
@@ -41,7 +41,7 @@ function putKey(li, k, key, from) {
 async function copyLayer() {
     const L = kmAll()[SEL.layer];
     if (!L || L.hold) return;
-    try { await navigator.clipboard.writeText(layerText(L.data)); toast('Copied the layer ' + L.data.name + '. ' + SHARE_WARN); }
+    try { await copyText(layerText(L.data)); toast('Copied the layer ' + L.data.name + '. ' + SHARE_WARN); }
     catch (e) { toast('The browser didn\'t allow copying: use Save layer… instead.', 'bad'); }
 }
 function saveLayer() {

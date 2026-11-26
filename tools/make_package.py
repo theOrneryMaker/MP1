@@ -21,7 +21,9 @@ PAGE = ("BUILD_PAGES/MP1 Ember.html", "MP1 Ember.html")
 
 def main(folder):
     fw_dir = os.path.join(ROOT, folder)
-    fw = re.search(r'FW\s*=\s*"([^"]+)"', open(os.path.join(fw_dir, "lib", "ember", "link.py"), encoding="utf-8").read()).group(1)
+    link = open(os.path.join(fw_dir, "lib", "ember", "link.py"), encoding="utf-8").read()
+    fw = re.search(r'FW\s*=\s*"([^"]+)"', link).group(1)
+    ver = re.search(r'VER\s*=\s*"([^"]+)"', link).group(1)          # the release, e.g. 01.4
     page = os.path.join(fw_dir, PAGE[0])
     if not os.path.exists(page):
         sys.exit("no page: run tools/make_page.py first")
@@ -34,7 +36,7 @@ def main(folder):
         zname = os.path.join(fw_dir, "BUILD_FROZEN", "MP1_Ember_update_{}_{}.zip".format(fw, board))
         files = {"drive/" + n: os.path.join(fw_dir, n) for n in DRIVE}
         files["drive/" + PAGE[1]] = page
-        man = {"mp1_package": 1, "fw": fw, "board": board, "board_ids": ids, "uf2": "firmware.uf2",
+        man = {"mp1_package": 1, "fw": fw, "version": ver, "board": board, "board_ids": ids, "uf2": "firmware.uf2",
                "built": time.strftime("%Y-%m-%d %H:%M"),
                "firmware_built": time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(os.path.join(fdir, uf2))))}
         with zipfile.ZipFile(zname, "w", zipfile.ZIP_DEFLATED) as z:

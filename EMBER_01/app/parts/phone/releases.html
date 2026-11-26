@@ -1,0 +1,175 @@
+<script>
+// ─── Firmware from GitHub: the releases of theOrneryMaker/MP1 (tag ember-NN.N, with an MP1_Ember_update_*.zip).
+// In the app they're downloaded through it (MP1Android.fetch: no browser limits) and kept on the phone; in a browser
+// the list comes from GitHub and the package from the website's copy (GitHub's own downloads can't be read by a page).
+// The Update tab picks one: the newest by default, an older one or the user's own file with warnings. ───
+const REL_URL = 'https://api.github.com/repos/theOrneryMaker/MP1/releases?per_page=30';
+const REL = {list: null, state: '', err: '', choice: '', got: {}, onSite: {}};
+const verOf = tag => (/^ember-(\d+(?:\.\d+)*)$/.exec(tag || '') || [])[1] || '';
+function cmpVer(a, b) {                                     // -1 / 0 / 1; '' is the oldest
+    const x = a ? a.split('.').map(Number) : [], y = b ? b.split('.').map(Number) : [];
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+        const p = i < x.length ? x[i] : -1, q = i < y.length ? y[i] : -1;
+        if (p !== q) return p < q ? -1 : 1;
+    }
+    return 0;
+}
+const store = {get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+               set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* private */ } }};
+
+// the app's downloads: MP1Net._done comes back from Java
+const NET = {n: 0, wait: {}};
+window.MP1Net = {_done(id, err, b64) { const w = NET.wait[id]; delete NET.wait[id]; if (w) err ? w[1](new Error(err)) : w[0](b64); }};
+const appNet = () => !!(APP && APP.fetch);
+const netGet = (url, saveAs = '') => new Promise((ok, bad) => { const id = String(++NET.n); NET.wait[id] = [ok, bad]; APP.fetch(id, url, saveAs); });
+// the website's copy of each release's packages (made when a release is published): ember/releases/<tag>/<file>
+const SITE_RELEASES = 'https://theornerymaker.github.io/MP_Series_Macropad/ember/releases/';
+async function webGet(url) {
+    const r = await fetch(url, {cache: 'no-cache'});
+    if (!r.ok) throw Object.assign(new Error(r.status === 404 ? 'not on the website' : 'the website said ' + r.status), {status: r.status});
+    return new Uint8Array(await r.arrayBuffer());
+}
+const where = () => APP ? 'the phone' : 'this computer';
+
+const newestRel = () => (REL.list || []).find(r => !r.pre) || null;
+const builtIn = () => (FU.pkgs || [])[0] || null;
+const builtInVer = () => (builtIn() && builtIn().info.version) || '';
+const padVer = () => (Link.pad && Link.pad.ver) || '';
+
+async function relLoad() {
+    try { REL.list = JSON.parse(store.get('mp1_releases') || 'null'); } catch (e) { REL.list = null; }
+    REL.state = 'checking'; drawPkgs();
+    try {
+        const raw = JSON.parse(new TextDecoder().decode(appNet() ? b64Bytes(await netGet(REL_URL)) : await webGet(REL_URL)));
+        REL.list = raw.filter(r => !r.draft).map(r => {
+            const v = verOf(r.tag_name);
+            const assets = (r.assets || []).filter(a => /^MP1_Ember_update_.*\.zip$/i.test(a.name))
+                .map(a => ({name: a.name, url: a.browser_download_url, size: a.size, page: r.html_url}));
+            return v && assets.length ? {v, tag: r.tag_name, name: 'Ember ' + v, pre: !!r.prerelease,
+                date: (r.published_at || '').slice(0, 10), assets, notes: String(r.body || '').slice(0, 2000)} : null;
+        }).filter(Boolean).sort((a, b) => cmpVer(b.v, a.v));
+        store.set('mp1_releases', JSON.stringify(REL.list));
+        REL.state = 'ok';
+    } catch (e) {
+        REL.state = 'failed'; REL.err = e.message;
+    }
+    drawPkgs(); drawNewFw(); render();
+}
+
+// what's picked: {kind: 'rel', rel} / {kind: 'builtin'} / {kind: 'file'}
+function fuChoice() {
+    let c = REL.choice;
+    if (!c) {                                               // the default: the newest (the built-in one if it's as new)
+        const n = newestRel();
+        c = n && cmpVer(n.v, builtInVer()) > 0 ? 'rel:' + n.tag : builtIn() ? 'builtin' : n ? 'rel:' + n.tag : '';
+    }
+    if (c === 'file') return FU.picked ? {kind: 'file'} : {kind: 'none'};
+    if (c === 'builtin') return builtIn() ? {kind: 'builtin', v: builtInVer()} : {kind: 'none'};
+    const rel = (REL.list || []).find(r => 'rel:' + r.tag === c);
+    return rel ? {kind: 'rel', rel, v: rel.v} : {kind: 'none'};
+}
+// the warnings for what's picked (HTML lines; [] = none)
+function fuWarnings() {
+    const c = fuChoice(), out = [], n = newestRel();
+    if (c.kind === 'file') {
+        out.push(`<strong>Your own firmware file</strong> (${esc(FU.picked.source)}), not a release from GitHub. Only use a file you trust: ` +
+                 'it replaces the pad\'s firmware (your keymap, secret pages and settings stay). If the pad doesn\'t start after it, ' +
+                 'pick a release here and use Restore from a backup….');
+        if (FU.picked.info.version && n && cmpVer(FU.picked.info.version, n.v) < 0) out.push(`It says it's Ember ${esc(FU.picked.info.version)}, older than the newest (${esc(n.v)}).`);
+    } else if (c.v) {
+        if (c.kind === 'rel' && c.rel.pre) out.push(`<strong>Ember ${esc(c.v)} is a test release:</strong> it may have problems.`);
+        if (n && cmpVer(c.v, n.v) < 0) out.push(`<strong>Ember ${esc(c.v)} is older than the newest (${esc(n.v)}).</strong> Use it only if the newest gives you ` +
+                 'trouble. Layers, keys or settings made with newer features may not work on it (the pad lists any problem when it starts); your files stay on the pad.');
+        if (padVer() && cmpVer(c.v, padVer()) < 0) out.push(`The pad has Ember ${esc(padVer())} now: this goes back to an older one.`);
+    }
+    return out;
+}
+const fuNeedsOk = () => fuWarnings().length > 0;
+
+function drawPkgs() {
+    if (!$('fuPkg')) return;
+    const n = newestRel(), c = fuChoice(), b = builtIn();
+    const sel = c.kind === 'rel' ? 'rel:' + c.rel.tag : c.kind;
+    const opts = (REL.list || []).map(r => `<option value="rel:${esc(r.tag)}">${esc(r.name)}${r === n ? ' · newest' : ''}${r.pre ? ' · test release' : ''}${r.date ? ' · ' + esc(r.date) : ''}</option>`);
+    if (b) opts.push(`<option value="builtin">Built into the app${b.info.version ? ': Ember ' + esc(b.info.version) : ''}</option>`);
+    if (FU.picked) opts.push(`<option value="file">My own file: ${esc(FU.picked.source)}</option>`);
+    const st = {checking: 'Checking GitHub for releases…', ok: `Checked GitHub just now: ${(REL.list || []).length} releases.`,
+                failed: `Couldn't reach GitHub (${esc(REL.err)}): ${REL.list ? 'the releases from the last check, ' : ''}${b ? 'the built-in firmware ' : ''}${REL.list || b ? 'and ' : ''}your own file still work.`}[REL.state] || '';
+    const warn = fuWarnings();
+    // in a browser a release comes from the website's copy: asked once per release, said here before Check the pad
+    let site = '';
+    if (!appNet() && c.kind === 'rel') {
+        const tag = c.rel.tag, a = c.rel.assets[0];
+        if (!(tag in REL.onSite)) {
+            REL.onSite[tag] = null;
+            fetch(SITE_RELEASES + encodeURIComponent(tag) + '/' + encodeURIComponent(a.name), {method: 'HEAD', cache: 'no-cache'})
+                .then(r => r.ok, () => null).then(ok => { REL.onSite[tag] = ok; drawPkgs(); });
+        }
+        if (REL.onSite[tag] === false) site = `<div class="warn"><strong>${esc(c.rel.name)} isn't on the website yet</strong>, so this page can't ` +
+            `download it. Download <a href="${esc(a.url)}">${esc(a.name)}</a> from GitHub, then <strong>Use my own firmware file…</strong> and pick it.</div>`;
+    }
+    $('fuPkg').innerHTML = opts.length
+        ? `<label class="pick">Firmware to put on the pad<select id="fuSel">${opts.join('')}</select></label>` +
+          (st ? `<p class="hint">${st}</p>` : '') +
+          (c.kind === 'rel' && c.rel.notes ? `<details><summary class="hint">What's in Ember ${esc(c.rel.v)}</summary><p class="hint" style="white-space:pre-wrap">${esc(c.rel.notes)}</p></details>` : '') +
+          (warn.length ? `<div class="warn">${warn.join('<br>')}<br><span class="hint">To go ahead anyway: Check the pad. Nothing changes until you tick “I understand” and choose Wipe and update.</span></div>` : '') + site
+        : `<p class="warn">${REL.state === 'checking' ? 'Checking GitHub for releases…' : 'No firmware yet: connect to the internet (releases from GitHub), or use your own firmware file….'}</p>`;
+    if ($('fuSel')) {
+        $('fuSel').value = sel;
+        $('fuSel').onchange = e => { REL.choice = e.target.value; drawPkgs(); };
+    }
+}
+
+// the package for this board, from what's picked (a release is downloaded once, then kept on the phone)
+async function chosenPkg(boardId, note) {
+    const c = fuChoice();
+    const fits = p => (p.info.board_ids || []).includes(boardId);
+    if (c.kind === 'none') throw new Error('No firmware picked (choose one under Firmware to put on the pad).');
+    if (c.kind === 'file') {
+        if (!fits(FU.picked)) throw new Error(`Your file isn't for this board (${boardId}): it's for ${(FU.picked.info.board_ids || []).join(', ') || '?'}.`);
+        return FU.picked;
+    }
+    if (c.kind === 'builtin') {
+        const p = (FU.pkgs || []).find(fits);
+        if (!p) throw new Error(`The firmware built into the app isn't for this board (${boardId}).`);
+        return p;
+    }
+    for (const a of c.rel.assets) {
+        const name = c.rel.tag + '_' + a.name;
+        let bytes;
+        if (appNet()) {
+            let b64 = APP.saved(name);
+            if (!b64) {
+                note(`Downloading ${esc(c.rel.name)} from GitHub (${fuKb(a.size || 0)})…`);
+                try { await netGet(a.url, name); } catch (e) { throw new Error(`Couldn't download ${c.rel.name} (${e.message}). Pick the firmware built into the app, or try again with internet.`); }
+                b64 = APP.saved(name);
+            }
+            bytes = b64Bytes(b64);
+        } else if (!(bytes = REL.got[name])) {
+            note(`Downloading ${esc(c.rel.name)} from the website (${fuKb(a.size || 0)})…`);
+            try { bytes = REL.got[name] = await webGet(SITE_RELEASES + encodeURIComponent(c.rel.tag) + '/' + encodeURIComponent(a.name)); }
+            catch (e) {
+                throw new Error(`Couldn't download ${c.rel.name} (${e.message}). Download ${a.name} from its GitHub page (${a.page || 'Releases'}), ` +
+                    'then use My own firmware file… and pick it.');
+            }
+        }
+        const p = await readPackage(bytes, c.rel.name + ' from GitHub');
+        if (!p.info.version) p.info.version = c.rel.v;
+        if (fits(p)) return p;
+    }
+    throw new Error(`${c.rel.name} has no update package for this board (${boardId}).`);
+}
+
+// a new release: a line at the top (once per release; the background check won't tell about it again)
+function drawNewFw() {
+    const n = newestRel(), box = $('newFw');
+    if (!box) return;
+    const show = n && cmpVer(n.v, builtInVer()) > 0 && cmpVer(n.v, padVer()) > 0 && cmpVer(n.v, store.get('mp1_fw_seen') || '') > 0;
+    box.hidden = !show;
+    if (!show) return;
+    if (APP && APP.seen) APP.seen(n.v);
+    box.innerHTML = `<strong>New firmware: Ember ${esc(n.v)}</strong>${n.date ? ' (' + esc(n.date) + ')' : ''}. It's picked below: ` +
+        'plug a pad in, then Check the pad.<br><button id="newFwOk">OK</button>';
+    $('newFwOk').onclick = () => { store.set('mp1_fw_seen', n.v); box.hidden = true; };
+}
+</script>

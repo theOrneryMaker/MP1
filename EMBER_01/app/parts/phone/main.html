@@ -3,14 +3,19 @@
 function $(id) { return document.getElementById(id); }
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 
+// "Ember 01.5 is out" next to the pad's firmware, when the newest release is newer than what it has
+function padUpdate() {
+    const n = newestRel();
+    return n && (!Link.pad.ver || cmpVer(n.v, Link.pad.ver) > 0) ? `<br><span class="good">Ember ${esc(n.v)} is out: update it below.</span>` : '';
+}
 function render() {
     const pad = Link.pad, on = !!pad;
     $('dot').classList.toggle('on', on);
     $('title').innerHTML = 'MP1 Ember' + (APP && APP.version ? ` <small>app ${esc(APP.version())}</small>` : '');
     $('info').innerHTML = on
-        ? `<dt>Firmware</dt><dd>${esc(fwName(pad.fw ?? '?'))}${/^ember/i.test(String(pad.fw)) ? '' : ' (old: update it below)'}</dd>` +
+        ? `<dt>Firmware</dt><dd>${esc(padFwName(pad))}${/^ember/i.test(String(pad.fw)) ? padUpdate() : ' (old: update it below)'}</dd>` +
           `<dt>Layers</dt><dd>${esc((pad.layers || []).join(', ') || '?')}</dd>` +
-          `<dt>Showing</dt><dd>${esc(pad.layer || '')}</dd><dt>Free memory</dt><dd>${pad.free ? kb(pad.free) : '?'}</dd>` +
+          `<dt>Showing</dt><dd>${esc(pad.layer || '')}</dd><dt>Free memory</dt><dd>${pad.free ? fuKb(pad.free) : '?'}</dd>` +
           ((pad.errors || []).length ? `<dt>Problems</dt><dd class="bad">${pad.errors.map(esc).join('<br>')}</dd>` : '')
         : `<dt>Status</dt><dd>${FU.busy ? 'Updating…' : Link.port ? 'Connecting…' : 'Not connected'}</dd>`;
     $('connectBtn').textContent = on ? 'Connect again' : 'Connect…';
@@ -39,7 +44,7 @@ if (window.MP1Serial) {
     MP1Serial.addEventListener('disconnect', e => { if (Link.port && e.target === Link.port) Link.close(); });
 }
 if (APP) {
-    drawPkgs();
+    loadPkgs().then(() => { drawPkgs(); return relLoad(); });
     fuBootCheck();
     setInterval(() => { if (!FU.busy) fuBootCheck(); }, 3000);
 } else {
@@ -55,7 +60,7 @@ $('fuPkgFile').addEventListener('change', async e => {
     const f = e.target.files[0];
     e.target.value = '';
     if (!f) return;
-    try { FU.picked = await readPackage(new Uint8Array(await f.arrayBuffer()), f.name); await drawPkgs(); }
+    try { FU.picked = await readPackage(new Uint8Array(await f.arrayBuffer()), f.name); REL.choice = 'file'; drawPkgs(); }
     catch (err) { $('fuOut').innerHTML = `<p class="bad">${esc(f.name)}: ${esc(err.message)}</p>`; }
 });
 $('fuRestoreBtn').addEventListener('click', () => $('fuRestoreFile').click());

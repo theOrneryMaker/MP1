@@ -85,11 +85,8 @@ $('filesView').addEventListener('click', async e => {
         const p = t.dataset.fget;
         filesNote('Reading ' + p + '…');
         try {
-            const bytes = await Link.readBytes(p), a = document.createElement('a');
-            a.href = URL.createObjectURL(new Blob([bytes]));
-            a.download = p.split('/').pop();
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+            const bytes = await Link.readBytes(p);
+            await saveBytes(p.split('/').pop(), bytes);
             filesNote('Downloaded ' + p + ' (' + kb(bytes.length) + ').', 'good');
         } catch (err) { filesNote(err.message, 'bad'); }
     } else if (t.dataset.fdel != null) {

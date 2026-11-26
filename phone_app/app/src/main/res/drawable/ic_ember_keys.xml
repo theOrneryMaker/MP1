@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app icon front layer: the pad's four keys (orange top row, crimson bottom row), with a little depth -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#C9773A" android:pathData="M35,31h12a4,4 0 0 1 4,4v12a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-12a4,4 0 0 1 4,-4z" />
+    <path android:fillColor="#F2A35C" android:pathData="M35,30h12a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-10a4,4 0 0 1 4,-4z" />
+    <path android:fillColor="#C9773A" android:pathData="M61,31h12a4,4 0 0 1 4,4v12a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-12a4,4 0 0 1 4,-4z" />
+    <path android:fillColor="#F2A35C" android:pathData="M61,30h12a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-10a4,4 0 0 1 4,-4z" />
+    <path android:fillColor="#8E1C30" android:pathData="M35,57h12a4,4 0 0 1 4,4v12a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-12a4,4 0 0 1 4,-4z" />
+    <path android:fillColor="#BE2A43" android:pathData="M35,56h12a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-10a4,4 0 0 1 4,-4z" />
+    <path android:fillColor="#8E1C30" android:pathData="M61,57h12a4,4 0 0 1 4,4v12a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-12a4,4 0 0 1 4,-4z" />
+    <path android:fillColor="#BE2A43" android:pathData="M61,56h12a4,4 0 0 1 4,4v10a4,4 0 0 1 -4,4h-12a4,4 0 0 1 -4,-4v-10a4,4 0 0 1 4,-4z" />
+</vector>

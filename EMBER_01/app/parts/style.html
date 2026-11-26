@@ -194,4 +194,53 @@ details.csvguide[open] > summary { margin-bottom: 8px; border-bottom: 1px solid 
 input[type="checkbox"] { accent-color: var(--sel); }
 ::selection { background: color-mix(in srgb, var(--sel) 35%, transparent); }
 @media (max-width: 640px) { .setrow { grid-template-columns: 1fr auto; } .sethelp { grid-column: 1 / 3; } .setrow > div { grid-column: 1 / 3; } }
+/* Help and Update show over the other views (start.html: setOverlay) */
+body.over > main:not(#helpView):not(#updateView) { display: none !important; }
+/* The Update tab (update_tab.html; its steps come from phone/update.html, which writes the phone page's classes) */
+.fu { max-width: 720px; }
+.fu dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+.fu dt { color: var(--muted); } .fu dd { margin: 0; }
+.fu .hint { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.fu .good { color: var(--good); } .fu .bad { color: var(--bad); }
+.fu .warn { padding: 10px 12px; border-radius: 8px; background: var(--chip); border-left: 3px solid var(--warn); font-size: 13px; margin: 8px 0; }
+.fu .rows > div { padding: 8px 0; border-top: 1px solid var(--line); }
+.fu .rows > div:first-child { border-top: 0; }
+.fu .bar { height: 8px; background: var(--chip); border-radius: 4px; overflow: hidden; margin: 8px 0 2px; }
+.fu .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--sel), var(--accent2)); transition: width .2s; }
+.fu #fuOut button { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 7px 14px; cursor: pointer; margin: 8px 8px 0 0; }
+.fu #fuOut button.primary { background: linear-gradient(135deg, var(--sel), color-mix(in srgb, var(--sel) 70%, var(--accent2))); border-color: var(--sel); color: var(--sel-ink); font-weight: 700; }
+.fu button:disabled { opacity: .45; cursor: default; }
+.fu label.pick { display: grid; gap: 4px; color: var(--muted); font-size: 13px; }
+.fu label.pick select { color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font: inherit; max-width: 100%; }
+.fu .warn label.pick { display: flex; gap: 8px; align-items: center; margin-top: 8px; color: var(--fg); }
+.fu details summary { cursor: pointer; }
+#newFw button { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 5px 14px; cursor: pointer; margin-top: 8px; }
+/* In the MP1 app (appbridge.html): what a phone can't do */
+html.inapp [data-view="spotifyView"], html.inapp [data-open="folder"] { display: none !important; }
+/* A phone (the MP1 app, or a narrow window): the top bar in two rows (tabs scroll sideways), one column, the whole page
+   scrolls; the pad's screen first, then the layers as a strip, then the selected key. Bigger touch targets. */
+@media (max-width: 860px) {
+  html, body { height: auto; }
+  body { grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); min-height: 100%; }
+  .top { flex-wrap: wrap; gap: 6px 12px; padding: 8px 12px 0; position: sticky; top: 0; z-index: 30; }
+  .conn { gap: 8px; }
+  .tabs { order: 3; width: calc(100% + 24px); margin: 0 -12px; padding: 0 12px 6px; overflow-x: auto; scrollbar-width: none; }
+  .tabs button { flex: none; padding: 9px 14px; }
+  #themeMenu { right: 8px; top: 100%; width: min(300px, calc(100vw - 16px)); }
+  .cols { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 12px; }
+  .cols > .center { order: 1; padding-top: 4px; gap: 12px; }
+  .cols > .panel:first-child { order: 2; }
+  .cols > #keyPanel { order: 3; }
+  .scroll { overflow: visible; }
+  .center > .sub { text-align: center; }
+  .oled { padding: 8px; border-radius: 10px; width: 100%; max-width: 528px; }
+  .oled canvas { width: 100%; height: auto; }
+  .thumbs { grid-auto-flow: column; grid-auto-columns: 144px; overflow-x: auto; padding-bottom: 6px; }
+  .thumb canvas { width: 144px; height: 72px; }
+  .page { padding: 12px; overflow: visible; }
+  .empty { padding: 32px 16px; }
+  .btn { min-height: 38px; }
+  .frow { grid-template-columns: minmax(0, 1fr) 60px auto; gap: 6px; }
+  .toast { top: 12px; }
+}
 </style>

@@ -1,6 +1,6 @@
 <main id="helpView" class="page help" hidden>
 <h2>Help</h2>
-<p class="sub">MP1 Ember: the pad and this page. Everything here works on Chrome or Edge on a computer.</p>
+<p class="sub">MP1 Ember: the pad and this page. Everything here works on Chrome or Edge on a computer, and in the MP1 phone app (Android).</p>
 
 <section class="panel"><h3>Connecting</h3>
 <p>Plug the pad in and click <b>Connect…</b>, then pick its port. If the page says the port didn't answer, you picked the
@@ -295,6 +295,21 @@ then <b>Prev</b>, <b>Play / Pause</b>, <b>Next</b> and <b>Mute</b>. The encoder 
 <p>The page needs to be open and signed in to Spotify (the Spotify tab: your own free Spotify key, once; the account needs Premium).
 When Spotify plays on this computer, the keys and the volume are the computer's own media keys; anywhere else (your phone, a
 speaker), they go through Spotify. The page asks once whether a computer it sees is this one.</p></section>
+
+<section class="panel"><h3>Updating the pad</h3>
+<p>The <b>Update</b> tab puts a new MP1 Ember on the pad, from any firmware (even one that doesn't connect). Pick the firmware
+(the newest release is picked; older releases and <b>Use my own firmware file…</b> warn first), then <b>Check the pad</b>. It saves
+a full backup to Downloads, converts your keymap, secret pages and settings, and shows what it will do. Nothing changes until
+<b>Wipe and update</b>. <b>Back up only</b> just saves the backup.</p>
+<ul>
+<li><b>On a computer</b> (Chrome or Edge): plug the pad straight in. The page asks for the pad's port (pick the other one if it
+says the console didn't answer), then the pad restarts as a drive called <b>RPI-RP2</b>: choose that drive. If the browser won't
+open it, <b>Save the two files to drag in myself…</b> and drag them onto RPI-RP2, the one marked 1 first.</li>
+<li><b>On a phone:</b> the MP1 app does the same over USB, and tells you when a new release is out. The app shows this page
+from the website (always the newest), or its own copy when there's no internet.</li>
+<li><b>If an update stops</b> with the pad as the RPI-RP2 drive, <b>Restore from a backup…</b> (in the Update tab) finishes it
+with the backup it saved. To get there by hand, unplug the pad and hold the board's BOOT button while you plug it back in.</li>
+</ul></section>
 
 <section class="panel"><h3>Older keymaps and backups</h3>
 <p>A pad with a keymap from FIRMWARE_03 / 04 (or older) shows <b>Convert it</b>. <b>Open a folder…</b> opens a backup of a pad's
